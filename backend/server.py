@@ -749,6 +749,88 @@ async def get_online_driver_locations(user: dict = Depends(get_admin_user)):
     ).to_list(100)
     return drivers
 
+@drivers_router.post("/update-location")
+async def update_driver_location(data: LocationUpdate, user: dict = Depends(get_current_user)):
+    """Update driver location and broadcast to customer if on active order"""
+    if user["role"] != "driver":
+        raise HTTPException(status_code=403, detail="Only drivers")
+    
+    # Update location in DB
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "location": {"lat": data.lat, "lng": data.lng},
+            "location_updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    # If driver has active order, send location to customer via WebSocket
+    active_order = await db.orders.find_one({
+        "driver_id": user["id"],
+        "status": "accepted"
+    })
+    
+    if active_order:
+        # Calculate simple ETA (mock: ~1 min per 0.01 degree distance)
+        customer = await db.users.find_one({"id": active_order["customer_id"]})
+        customer_loc = customer.get("location") if customer else None
+        
+        eta_minutes = 5  # default
+        if customer_loc:
+            # Simple distance calculation
+            lat_diff = abs(data.lat - customer_loc.get("lat", data.lat))
+            lng_diff = abs(data.lng - customer_loc.get("lng", data.lng))
+            distance = (lat_diff ** 2 + lng_diff ** 2) ** 0.5
+            eta_minutes = max(1, int(distance * 500))  # rough estimate
+        
+        # Send to customer
+        await manager.send_to_user(active_order["customer_id"], {
+            "type": "driver_location",
+            "driver_id": user["id"],
+            "location": {"lat": data.lat, "lng": data.lng},
+            "eta_minutes": eta_minutes,
+            "driver_name": user.get("name"),
+            "car_model": user.get("car_model"),
+            "car_number": user.get("car_number")
+        })
+    
+    return {"success": True}
+
+@drivers_router.get("/location/{driver_id}")
+async def get_driver_location(driver_id: str, user: dict = Depends(get_current_user)):
+    """Get driver location for customer tracking"""
+    # Verify customer has active order with this driver
+    if user["role"] == "customer":
+        order = await db.orders.find_one({
+            "customer_id": user["id"],
+            "driver_id": driver_id,
+            "status": "accepted"
+        })
+        if not order:
+            raise HTTPException(status_code=403, detail="No active order with this driver")
+    
+    driver = await db.users.find_one(
+        {"id": driver_id, "role": "driver"},
+        {"_id": 0, "id": 1, "name": 1, "location": 1, "car_model": 1, "car_number": 1, "phone": 1}
+    )
+    
+    if not driver:
+        raise HTTPException(status_code=404, detail="Driver not found")
+    
+    # Calculate ETA
+    customer_loc = user.get("location")
+    driver_loc = driver.get("location")
+    
+    eta_minutes = 5
+    if customer_loc and driver_loc:
+        lat_diff = abs(driver_loc.get("lat", 0) - customer_loc.get("lat", 0))
+        lng_diff = abs(driver_loc.get("lng", 0) - customer_loc.get("lng", 0))
+        distance = (lat_diff ** 2 + lng_diff ** 2) ** 0.5
+        eta_minutes = max(1, int(distance * 500))
+    
+    driver["eta_minutes"] = eta_minutes
+    return driver
+
 # ============ ADMIN ROUTES ============
 
 @admin_router.post("/login")

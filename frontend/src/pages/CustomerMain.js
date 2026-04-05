@@ -4,35 +4,50 @@ import { useAuth } from '../context/AuthContext';
 import { 
   MapPin, Navigation, Loader2, X, Phone, Car, 
   CheckCircle, AlertTriangle, LogOut, Menu, User, FileText,
-  History, Edit2, Camera, Clock, ChevronRight
+  History, Edit2, Camera, Clock, ChevronRight, Timer
 } from 'lucide-react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
-// Mock map component
-const MockMap = ({ userLocation, onLocationSelect, showPin = true }) => {
-  const [clickedLocation, setClickedLocation] = useState(null);
+// Mock map component with driver tracking
+const TrackingMap = ({ userLocation, driverLocation, driverInfo, showUserPin = true, etaMinutes }) => {
+  const [animatedDriverPos, setAnimatedDriverPos] = useState(null);
   
-  const handleMapClick = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Convert to mock coordinates (Moscow center area)
-    const lat = 55.75 + (rect.height / 2 - y) / 5000;
-    const lng = 37.62 + (x - rect.width / 2) / 5000;
-    
-    setClickedLocation({ lat, lng, x, y });
-    if (onLocationSelect) {
-      onLocationSelect({ lat, lng });
+  useEffect(() => {
+    if (driverLocation) {
+      setAnimatedDriverPos(driverLocation);
     }
+  }, [driverLocation]);
+
+  // Calculate positions on the map
+  const getUserMapPosition = () => {
+    if (!userLocation) return { left: '50%', top: '60%' };
+    return { left: '50%', top: '60%' };
   };
+
+  const getDriverMapPosition = () => {
+    if (!animatedDriverPos || !userLocation) return null;
+    
+    // Calculate relative position
+    const latDiff = animatedDriverPos.lat - userLocation.lat;
+    const lngDiff = animatedDriverPos.lng - userLocation.lng;
+    
+    // Map to screen coordinates (center = 50%)
+    const left = 50 + lngDiff * 3000;
+    const top = 60 - latDiff * 3000;
+    
+    return { 
+      left: `${Math.max(10, Math.min(90, left))}%`, 
+      top: `${Math.max(15, Math.min(85, top))}%` 
+    };
+  };
+
+  const driverPos = getDriverMapPosition();
 
   return (
     <div 
-      className="absolute inset-0 bg-slate-100 cursor-crosshair"
-      onClick={handleMapClick}
+      className="absolute inset-0 bg-slate-100"
       style={{
         backgroundImage: `
           linear-gradient(to right, #e2e8f0 1px, transparent 1px),
@@ -48,11 +63,55 @@ const MockMap = ({ userLocation, onLocationSelect, showPin = true }) => {
       <div className="absolute top-1/2 left-1/3 text-xs text-slate-400 -rotate-6">Садовое кольцо</div>
       <div className="absolute bottom-1/3 right-1/4 text-xs text-slate-400 rotate-3">ул. Арбат</div>
       
+      {/* Route line from driver to user */}
+      {driverPos && showUserPin && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none z-5">
+          <defs>
+            <linearGradient id="routeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#22c55e" />
+            </linearGradient>
+            <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <polygon points="0 0, 6 3, 0 6" fill="#3b82f6" />
+            </marker>
+          </defs>
+          <path
+            d={`M ${driverPos.left} ${driverPos.top} Q 50% 40%, 50% 60%`}
+            stroke="url(#routeGradient)"
+            strokeWidth="3"
+            strokeDasharray="8 4"
+            fill="none"
+            className="animate-pulse"
+          />
+        </svg>
+      )}
+      
+      {/* Driver location pin with animation */}
+      {driverPos && (
+        <div 
+          className="absolute transform -translate-x-1/2 -translate-y-full z-20 transition-all duration-1000 ease-out"
+          style={{ left: driverPos.left, top: driverPos.top }}
+        >
+          <div className="relative">
+            <div className="absolute -inset-3 bg-blue-500/30 rounded-full animate-ping" />
+            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+              <Car className="w-5 h-5 text-white" />
+            </div>
+            <div className="absolute left-1/2 top-full -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-blue-600" />
+          </div>
+          {/* Driver info tooltip */}
+          <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 bg-white rounded-lg shadow-lg px-3 py-2 whitespace-nowrap">
+            <p className="font-medium text-sm text-slate-900">{driverInfo?.driver_name}</p>
+            <p className="text-xs text-slate-500">{driverInfo?.car_number}</p>
+          </div>
+        </div>
+      )}
+      
       {/* User location pin */}
-      {showPin && userLocation && (
+      {showUserPin && userLocation && (
         <div 
           className="absolute transform -translate-x-1/2 -translate-y-full z-10"
-          style={{ left: '50%', top: '50%' }}
+          style={getUserMapPosition()}
         >
           <div className="relative">
             <div className="absolute -inset-4 bg-green-500/20 rounded-full animate-ping" />
@@ -61,19 +120,24 @@ const MockMap = ({ userLocation, onLocationSelect, showPin = true }) => {
             </div>
             <div className="absolute left-1/2 top-full -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-green-600" />
           </div>
+          <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full whitespace-nowrap">
+            Вы здесь
+          </div>
         </div>
       )}
       
-      {/* Clicked location pin */}
-      {clickedLocation && (
-        <div 
-          className="absolute transform -translate-x-1/2 -translate-y-full z-20"
-          style={{ left: clickedLocation.x, top: clickedLocation.y }}
-        >
-          <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
-            <MapPin className="w-4 h-4 text-white" />
+      {/* ETA Badge */}
+      {etaMinutes && driverPos && (
+        <div className="absolute top-4 left-4 bg-white rounded-xl shadow-lg p-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <Timer className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Время прибытия</p>
+              <p className="text-xl font-bold text-slate-900">~{etaMinutes} мин</p>
+            </div>
           </div>
-          <div className="absolute left-1/2 top-full -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-red-500" />
         </div>
       )}
       
@@ -84,10 +148,12 @@ const MockMap = ({ userLocation, onLocationSelect, showPin = true }) => {
       </div>
       
       {/* Location info */}
-      <div className="absolute left-4 bottom-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-xs text-slate-600">
-        <p>Тестовая карта</p>
-        <p className="text-slate-400">Нажмите для выбора точки</p>
-      </div>
+      {!driverPos && (
+        <div className="absolute left-4 bottom-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-xs text-slate-600">
+          <p>Тестовая карта</p>
+          <p className="text-slate-400">Нажмите для выбора точки</p>
+        </div>
+      )}
     </div>
   );
 };
@@ -110,6 +176,11 @@ const CustomerMain = () => {
   const [searchTimer, setSearchTimer] = useState(0);
   const [noDriverTimer, setNoDriverTimer] = useState(0);
   
+  // Driver tracking state
+  const [driverLocation, setDriverLocation] = useState(null);
+  const [driverInfo, setDriverInfo] = useState(null);
+  const [etaMinutes, setEtaMinutes] = useState(null);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showMenu, setShowMenu] = useState(false);
@@ -122,6 +193,7 @@ const CustomerMain = () => {
   
   const wsRef = useRef(null);
   const noDriverTimerRef = useRef(null);
+  const locationTrackingRef = useRef(null);
 
   useEffect(() => {
     if (!user || user.role !== 'customer') {
@@ -135,11 +207,9 @@ const CustomerMain = () => {
         (position) => {
           const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
           setUserLocation(loc);
-          // Update location on server
           api('POST', '/auth/update-location', loc).catch(console.error);
         },
         () => {
-          // Default to Moscow center
           setUserLocation({ lat: 55.7558, lng: 37.6173 });
         }
       );
@@ -178,6 +248,8 @@ const CustomerMain = () => {
             setOrderState('searching');
           } else if (order.status === 'accepted') {
             setOrderState('found');
+            // Start tracking driver location
+            startDriverTracking(order.driver_id);
           }
         }
       } catch (error) {
@@ -192,27 +264,75 @@ const CustomerMain = () => {
     
     wsRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      
       if (data.type === 'order_accepted') {
         setCurrentOrder(data.order);
         setOrderState('found');
         clearTimeout(noDriverTimerRef.current);
+        // Start tracking
+        startDriverTracking(data.order.driver_id);
       } else if (data.type === 'order_completed') {
         setOrderState('completed');
+        stopDriverTracking();
         setTimeout(() => {
           setOrderState('idle');
           setCurrentOrder(null);
+          setDriverLocation(null);
+          setDriverInfo(null);
+          setEtaMinutes(null);
         }, 3000);
+      } else if (data.type === 'driver_location') {
+        // Real-time driver location update
+        setDriverLocation(data.location);
+        setEtaMinutes(data.eta_minutes);
+        setDriverInfo({
+          driver_name: data.driver_name,
+          car_model: data.car_model,
+          car_number: data.car_number
+        });
       }
     };
 
     return () => {
       clearInterval(statsInterval);
       clearTimeout(noDriverTimerRef.current);
+      stopDriverTracking();
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
   }, [user, navigate, api]);
+
+  const startDriverTracking = (driverId) => {
+    // Fetch initial driver location
+    const fetchDriverLocation = async () => {
+      try {
+        const driver = await api('GET', `/drivers/location/${driverId}`);
+        if (driver.location) {
+          setDriverLocation(driver.location);
+          setEtaMinutes(driver.eta_minutes);
+          setDriverInfo({
+            driver_name: driver.name,
+            car_model: driver.car_model,
+            car_number: driver.car_number
+          });
+        }
+      } catch (error) {
+        console.error('Failed to fetch driver location');
+      }
+    };
+    
+    fetchDriverLocation();
+    // Poll every 5 seconds as backup (WebSocket is primary)
+    locationTrackingRef.current = setInterval(fetchDriverLocation, 5000);
+  };
+
+  const stopDriverTracking = () => {
+    if (locationTrackingRef.current) {
+      clearInterval(locationTrackingRef.current);
+      locationTrackingRef.current = null;
+    }
+  };
 
   // Block timer countdown
   useEffect(() => {
@@ -277,11 +397,13 @@ const CustomerMain = () => {
         setError(`Заказ заблокирован на ${Math.ceil(seconds / 60)} мин`);
       } else if (detail === 'You already have an active order') {
         setError('У вас уже есть активный заказ');
-        // Refresh active order
         const activeOrder = await api('GET', '/orders/active');
         if (activeOrder) {
           setCurrentOrder(activeOrder);
           setOrderState(activeOrder.status === 'pending' ? 'searching' : 'found');
+          if (activeOrder.status === 'accepted') {
+            startDriverTracking(activeOrder.driver_id);
+          }
         }
       } else {
         setError(detail || 'Ошибка создания заказа');
@@ -304,6 +426,10 @@ const CustomerMain = () => {
       
       setOrderState('idle');
       setCurrentOrder(null);
+      setDriverLocation(null);
+      setDriverInfo(null);
+      setEtaMinutes(null);
+      stopDriverTracking();
       clearTimeout(noDriverTimerRef.current);
     } catch (error) {
       setError(error.response?.data?.detail || 'Ошибка отмены');
@@ -336,6 +462,10 @@ const CustomerMain = () => {
       
       setOrderState('idle');
       setCurrentOrder(null);
+      setDriverLocation(null);
+      setDriverInfo(null);
+      setEtaMinutes(null);
+      stopDriverTracking();
       setShowProblem(false);
       setProblemText('');
     } catch (error) {
@@ -437,19 +567,43 @@ const CustomerMain = () => {
 
       case 'found':
         return (
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-green-600" />
+              <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-full mb-3">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-medium">Водитель найден!</span>
               </div>
-              <h2 className="text-xl font-bold text-slate-900 mb-1">Водитель найден!</h2>
-              <p className="text-slate-500">{currentOrder?.address}, д. {currentOrder?.house_number}</p>
+              <p className="text-slate-500 text-sm">{currentOrder?.address}, д. {currentOrder?.house_number}</p>
             </div>
+
+            {/* ETA Card */}
+            {etaMinutes && (
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                      <Timer className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-blue-100 text-sm">Прибудет через</p>
+                      <p className="text-2xl font-bold">~{etaMinutes} мин</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-blue-100 text-sm">Отслеживание</p>
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                      <span className="text-sm">Live</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="card">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
-                  <User className="w-7 h-7 text-blue-600" />
+                  <Car className="w-7 h-7 text-blue-600" />
                 </div>
                 <div className="flex-1">
                   <p className="font-semibold text-slate-900">{currentOrder?.driver_name}</p>
@@ -507,7 +661,7 @@ const CustomerMain = () => {
           <div className="space-y-5">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 mb-1">Куда едем?</h2>
-              <p className="text-slate-500">Укажите адрес подачи или выберите на карте</p>
+              <p className="text-slate-500">Укажите адрес подачи</p>
             </div>
 
             <div className="space-y-4">
@@ -595,8 +749,14 @@ const CustomerMain = () => {
 
   return (
     <div className="app-container">
-      {/* Map Background */}
-      <MockMap userLocation={userLocation} showPin={orderState === 'idle'} />
+      {/* Map Background with tracking */}
+      <TrackingMap 
+        userLocation={userLocation} 
+        driverLocation={driverLocation}
+        driverInfo={driverInfo}
+        showUserPin={orderState !== 'idle' || true} 
+        etaMinutes={etaMinutes}
+      />
       
       <div className="relative z-10 min-h-[100dvh] flex flex-col">
         {/* Header */}

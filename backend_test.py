@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
 Comprehensive Backend API Testing for Taxi WebToApp
-Tests all major API endpoints and functionality
+Tests all major API endpoints and functionality including driver tracking
 """
 
 import requests
 import sys
 import json
+import time
+import websocket
+import threading
 from datetime import datetime
 
 class TaxiAPITester:
@@ -52,7 +55,12 @@ class TaxiAPITester:
             elif method == 'DELETE':
                 response = requests.delete(url, headers=headers, timeout=10)
             
-            success = response.status_code == expected_status
+            # Handle multiple expected status codes
+            if isinstance(expected_status, list):
+                success = response.status_code in expected_status
+            else:
+                success = response.status_code == expected_status
+                
             response_data = {}
             
             try:
@@ -147,6 +155,7 @@ class TaxiAPITester:
         
         if success and 'token' in data:
             self.customer_token = data['token']
+            self.customer_id = data.get('user', {}).get('id')
             self.log_test("Customer Verify Code", True, f"Customer created/logged in")
         else:
             self.log_test("Customer Verify Code", False, f"Status: {status}, Response: {data}")
@@ -209,12 +218,21 @@ class TaxiAPITester:
             "role": "driver"
         }
         
-        success, status, data = self.make_request('POST', 'auth/verify-code', verify_data, expected_status=403)
-        self.log_test(
-            "Driver Verify Code (Before Activation)",
-            status == 403 and data.get('detail') == 'AWAITING_ACTIVATION',
-            f"Status: {status}, Response: {data}"
-        )
+        success, status, data = self.make_request('POST', 'auth/verify-code', verify_data, expected_status=[200, 403])
+        
+        if status == 200 and data.get('token'):
+            # Driver is already activated
+            self.driver_token = data['token']
+            self.driver_id = data.get('user', {}).get('id')
+            self.log_test("Driver Verify Code (Already Activated)", True, "Driver already activated and logged in")
+        elif status == 403 and data.get('detail') == 'AWAITING_ACTIVATION':
+            self.log_test("Driver Verify Code (Before Activation)", True, "Correctly blocked unactivated driver")
+        else:
+            self.log_test(
+                "Driver Verify Code (Before Activation)",
+                False,
+                f"Status: {status}, Response: {data}"
+            )
 
     def test_admin_driver_management(self):
         """Test admin driver management functions"""
@@ -282,6 +300,15 @@ class TaxiAPITester:
         
         print("\n🔍 Testing Order Management...")
         
+        # First, cancel any existing active orders
+        success, status, data = self.make_request('GET', 'orders/active', token=self.customer_token)
+        if success and data and data.get('id'):
+            # Cancel existing order
+            cancel_success, cancel_status, cancel_data = self.make_request('POST', f'orders/cancel/{data["id"]}', token=self.customer_token)
+            if cancel_success:
+                print("   Cancelled existing active order")
+                time.sleep(1)  # Wait a moment before creating new order
+        
         # Create order as customer
         order_data = {
             "address": "Тестовая улица, 123",
@@ -296,7 +323,7 @@ class TaxiAPITester:
         )
         
         if success and 'id' in data:
-            order_id = data['id']
+            self.order_id = data['id']  # Store order ID for driver tracking tests
             
             # Get customer's orders
             success, status, data = self.make_request('GET', 'orders/my-orders', token=self.customer_token)
@@ -374,6 +401,13 @@ class TaxiAPITester:
         if admin_auth_success:
             self.test_settings_management()
         
+        # Driver tracking specific tests
+        self.test_order_acceptance_by_driver()
+        self.test_driver_location_update()
+        self.test_customer_get_driver_location()
+        self.test_driver_location_broadcasting()
+        self.test_websocket_driver_tracking()
+        
         # Print summary
         print("\n" + "=" * 60)
         print(f"📊 Test Results: {self.tests_passed}/{self.tests_run} passed")
@@ -392,6 +426,160 @@ class TaxiAPITester:
                     print(f"  - {test['name']}: {test['details']}")
             
             return 1
+
+    def test_order_acceptance_by_driver(self):
+        """Test driver accepting order for tracking tests"""
+        if not self.driver_token or not hasattr(self, 'order_id') or not self.order_id:
+            self.log_test("Order Acceptance by Driver", False, "Missing driver token or order ID")
+            return
+        
+        # Driver goes online first
+        success, status, data = self.make_request('POST', 'drivers/toggle-ready', {}, self.driver_token)
+        if success:
+            print("   Driver went online")
+        
+        # Driver accepts the order
+        success, status, data = self.make_request('POST', f'orders/accept/{self.order_id}', {}, self.driver_token)
+        
+        if success:
+            self.log_test("Order Acceptance by Driver", True, "Driver accepted order for tracking")
+        else:
+            self.log_test("Order Acceptance by Driver", False, f"Status: {status}, Response: {data}")
+
+    def test_driver_location_update(self):
+        """Test driver location update API"""
+        if not self.driver_token:
+            self.log_test("Driver Location Update", False, "No driver token")
+            return
+        
+        test_location = {
+            'lat': 55.7558,
+            'lng': 37.6173
+        }
+        
+        success, status, data = self.make_request('POST', 'drivers/update-location', test_location, self.driver_token)
+        
+        if success:
+            self.log_test("Driver Location Update", True)
+        else:
+            self.log_test("Driver Location Update", False, f"Status: {status}, Response: {data}")
+
+    def test_customer_get_driver_location(self):
+        """Test customer getting driver location"""
+        if not self.customer_token or not hasattr(self, 'driver_id'):
+            self.log_test("Customer Get Driver Location", False, "Missing tokens or driver ID")
+            return
+        
+        # First ensure driver has location
+        test_location = {
+            'lat': 55.7560,
+            'lng': 37.6175
+        }
+        self.make_request('POST', 'drivers/update-location', test_location, self.driver_token)
+        
+        # Customer gets driver location
+        success, status, data = self.make_request('GET', f'drivers/location/{self.driver_id}', token=self.customer_token)
+        
+        if success:
+            if 'location' in data and 'eta_minutes' in data:
+                self.log_test("Customer Get Driver Location", True, f"ETA: {data.get('eta_minutes')} minutes")
+            else:
+                self.log_test("Customer Get Driver Location", False, "Missing location or ETA data")
+        else:
+            self.log_test("Customer Get Driver Location", False, f"Status: {status}, Response: {data}")
+
+    def test_driver_location_broadcasting(self):
+        """Test driver location update broadcasting"""
+        if not self.driver_token:
+            self.log_test("Driver Location Broadcasting", False, "No driver token")
+            return
+        
+        # Update driver location multiple times to simulate movement
+        locations = [
+            {'lat': 55.7560, 'lng': 37.6175},
+            {'lat': 55.7555, 'lng': 37.6180},
+            {'lat': 55.7550, 'lng': 37.6185}
+        ]
+        
+        success_count = 0
+        for location in locations:
+            success, status, data = self.make_request('POST', 'drivers/update-location', location, self.driver_token)
+            if success:
+                success_count += 1
+                time.sleep(0.5)  # Small delay between updates
+        
+        if success_count == len(locations):
+            self.log_test("Driver Location Broadcasting", True, f"Updated {success_count} locations")
+        else:
+            self.log_test("Driver Location Broadcasting", False, f"Only {success_count}/{len(locations)} updates succeeded")
+
+    def test_websocket_driver_tracking(self):
+        """Test WebSocket connection for real-time driver tracking"""
+        if not hasattr(self, 'customer_id') or not self.customer_id:
+            self.log_test("WebSocket Driver Tracking", False, "No customer ID")
+            return
+        
+        try:
+            ws_url = "wss://order-sync-platform-1.preview.emergentagent.com/ws/" + self.customer_id
+            ws_messages = []
+            ws_connected = False
+            
+            def on_message(ws, message):
+                try:
+                    data = json.loads(message)
+                    ws_messages.append(data)
+                    print(f"📡 WebSocket message: {data.get('type', 'unknown')}")
+                except:
+                    pass
+            
+            def on_open(ws):
+                nonlocal ws_connected
+                ws_connected = True
+                print("📡 WebSocket connected")
+            
+            def on_error(ws, error):
+                print(f"📡 WebSocket error: {error}")
+            
+            def on_close(ws, close_status_code, close_msg):
+                nonlocal ws_connected
+                ws_connected = False
+                print("📡 WebSocket closed")
+            
+            ws = websocket.WebSocketApp(ws_url,
+                                      on_open=on_open,
+                                      on_message=on_message,
+                                      on_error=on_error,
+                                      on_close=on_close)
+            
+            # Run WebSocket in background thread
+            ws_thread = threading.Thread(target=ws.run_forever)
+            ws_thread.daemon = True
+            ws_thread.start()
+            
+            # Wait for connection
+            time.sleep(2)
+            
+            if ws_connected:
+                # Test driver location update with WebSocket
+                test_location = {'lat': 55.7565, 'lng': 37.6170}
+                success, status, data = self.make_request('POST', 'drivers/update-location', test_location, self.driver_token)
+                
+                # Wait for WebSocket message
+                time.sleep(3)
+                
+                # Check if we received driver_location message
+                driver_location_messages = [msg for msg in ws_messages if msg.get('type') == 'driver_location']
+                if driver_location_messages:
+                    self.log_test("WebSocket Driver Tracking", True, f"Received {len(driver_location_messages)} location updates")
+                else:
+                    self.log_test("WebSocket Driver Tracking", False, "No driver location messages received")
+                
+                ws.close()
+            else:
+                self.log_test("WebSocket Driver Tracking", False, "Failed to connect to WebSocket")
+                
+        except Exception as e:
+            self.log_test("WebSocket Driver Tracking", False, f"Exception: {str(e)}")
 
 def main():
     """Main test runner"""

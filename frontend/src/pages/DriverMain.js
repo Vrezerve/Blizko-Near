@@ -92,15 +92,33 @@ const DriverMain = () => {
 
     setIsReady(user.is_online || false);
 
-    // Get location
+    // Get location and start tracking
+    let locationWatchId = null;
+    
+    const updateLocation = async (position) => {
+      const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
+      setUserLocation(loc);
+      
+      // Send location to server (for customer tracking)
+      try {
+        await api('POST', '/drivers/update-location', loc);
+      } catch (error) {
+        console.error('Failed to update location');
+      }
+    };
+
     if (navigator.geolocation) {
+      // Get initial location
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const loc = { lat: position.coords.latitude, lng: position.coords.longitude };
-          setUserLocation(loc);
-          api('POST', '/auth/update-location', loc).catch(console.error);
-        },
+        updateLocation,
         () => setUserLocation({ lat: 55.75, lng: 37.62 })
+      );
+      
+      // Watch location changes (real-time tracking)
+      locationWatchId = navigator.geolocation.watchPosition(
+        updateLocation,
+        (error) => console.error('Location watch error:', error),
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
       );
     }
 
@@ -157,6 +175,10 @@ const DriverMain = () => {
       clearInterval(ordersInterval);
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      // Stop location tracking
+      if (locationWatchId) {
+        navigator.geolocation.clearWatch(locationWatchId);
       }
     };
   }, [user, navigate, api, isReady, currentOrder]);
