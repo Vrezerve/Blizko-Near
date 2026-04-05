@@ -4,8 +4,200 @@ import { useAuth } from '../context/AuthContext';
 import { 
   Users, Car, ClipboardList, Settings, Bell, BarChart3, 
   LogOut, Search, Check, X, Edit2, Loader2, Eye, 
-  ChevronRight, AlertTriangle, MessageSquare, Key
+  ChevronRight, AlertTriangle, MessageSquare, Key, Map,
+  MapPin, Navigation, Phone, Clock
 } from 'lucide-react';
+
+// Admin Map Component showing online drivers
+const AdminMap = ({ drivers, onDriverClick }) => {
+  return (
+    <div 
+      className="relative w-full h-96 rounded-xl overflow-hidden bg-slate-100"
+      style={{
+        backgroundImage: `
+          linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+          linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)
+        `,
+        backgroundSize: '24px 24px'
+      }}
+    >
+      {/* Map labels */}
+      <div className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-sm">
+        <p className="font-medium text-slate-900">Водители онлайн: {drivers.length}</p>
+      </div>
+
+      {/* Street simulation */}
+      <div className="absolute top-1/4 left-1/4 text-xs text-slate-400 rotate-12">ул. Центральная</div>
+      <div className="absolute top-1/2 left-1/2 text-xs text-slate-400 -rotate-6">пр. Главный</div>
+      <div className="absolute bottom-1/3 right-1/4 text-xs text-slate-400">ул. Парковая</div>
+
+      {/* Driver pins */}
+      {drivers.map((driver, idx) => {
+        // Distribute drivers on the map
+        const angle = (idx / drivers.length) * 2 * Math.PI;
+        const radius = 120 + Math.random() * 50;
+        const left = 50 + Math.cos(angle) * (radius / 4);
+        const top = 50 + Math.sin(angle) * (radius / 6);
+        
+        return (
+          <div
+            key={driver.id}
+            className="absolute transform -translate-x-1/2 -translate-y-full cursor-pointer group"
+            style={{ left: `${left}%`, top: `${top}%` }}
+            onClick={() => onDriverClick(driver)}
+          >
+            <div className="relative">
+              {!driver.is_busy && (
+                <div className="absolute -inset-2 bg-green-500/30 rounded-full animate-ping" />
+              )}
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white ${
+                driver.is_busy ? 'bg-yellow-500' : 'bg-green-500'
+              }`}>
+                <Car className="w-4 h-4 text-white" />
+              </div>
+              <div className="absolute left-1/2 top-full -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-green-500" 
+                   style={{ borderTopColor: driver.is_busy ? '#eab308' : '#22c55e' }} />
+            </div>
+            
+            {/* Tooltip */}
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="bg-slate-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap">
+                <p className="font-medium">{driver.name}</p>
+                <p className="text-slate-300">{driver.car_number}</p>
+                <p className={driver.is_busy ? 'text-yellow-400' : 'text-green-400'}>
+                  {driver.is_busy ? 'Занят' : 'Свободен'}
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-xs">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-green-500 rounded-full" />
+            <span className="text-slate-600">Свободен</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 bg-yellow-500 rounded-full" />
+            <span className="text-slate-600">Занят</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Route Map Modal
+const RouteMapModal = ({ orderRoute, onClose }) => {
+  if (!orderRoute) return null;
+  
+  const { order, customer, driver } = orderRoute;
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h3 className="font-semibold text-slate-900">Маршрут заказа #{order.id.slice(0, 8)}</h3>
+          <button onClick={onClose} className="p-2">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+        
+        <div className="p-4">
+          {/* Mock Route Map */}
+          <div 
+            className="relative w-full h-64 rounded-xl overflow-hidden bg-slate-100 mb-4"
+            style={{
+              backgroundImage: `
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px)
+              `,
+              backgroundSize: '20px 20px'
+            }}
+          >
+            {/* Route line */}
+            <svg className="absolute inset-0 w-full h-full">
+              <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                  <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a" />
+                </marker>
+              </defs>
+              <path
+                d="M 100 200 Q 200 100 300 150 T 500 80"
+                stroke="#16a34a"
+                strokeWidth="3"
+                strokeDasharray="8 4"
+                fill="none"
+                markerEnd="url(#arrowhead)"
+              />
+            </svg>
+            
+            {/* Driver pin */}
+            {driver && (
+              <div className="absolute" style={{ left: '15%', top: '75%' }}>
+                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                  <Car className="w-5 h-5 text-white" />
+                </div>
+                <p className="text-xs text-center mt-1 font-medium text-blue-600">Водитель</p>
+              </div>
+            )}
+            
+            {/* Destination pin */}
+            <div className="absolute" style={{ left: '80%', top: '25%' }}>
+              <div className="w-10 h-10 bg-red-500 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                <MapPin className="w-5 h-5 text-white" />
+              </div>
+              <p className="text-xs text-center mt-1 font-medium text-red-500">Адрес</p>
+            </div>
+          </div>
+          
+          {/* Order Details */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-50 rounded-xl p-4">
+              <h4 className="font-medium text-slate-900 mb-2 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-red-500" />
+                Адрес подачи
+              </h4>
+              <p className="text-slate-700">{order.address}</p>
+              <p className="text-slate-500">д. {order.house_number}</p>
+            </div>
+            
+            <div className="bg-slate-50 rounded-xl p-4">
+              <h4 className="font-medium text-slate-900 mb-2 flex items-center gap-2">
+                <Phone className="w-4 h-4 text-green-600" />
+                Клиент
+              </h4>
+              <p className="text-slate-700">{customer?.name || 'Без имени'}</p>
+              <p className="text-slate-500">{order.customer_phone}</p>
+            </div>
+            
+            {driver && (
+              <div className="bg-slate-50 rounded-xl p-4 col-span-2">
+                <h4 className="font-medium text-slate-900 mb-2 flex items-center gap-2">
+                  <Car className="w-4 h-4 text-blue-600" />
+                  Водитель
+                </h4>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-700">{driver.name}</p>
+                    <p className="text-slate-500">{driver.phone}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-slate-700">{driver.car_model}</p>
+                    <p className="font-medium text-slate-900">{driver.car_number}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -19,11 +211,14 @@ const AdminPanel = () => {
   const [logs, setLogs] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [settings, setSettings] = useState({});
+  const [onlineDrivers, setOnlineDrivers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [userFilter, setUserFilter] = useState('all');
   const [orderFilter, setOrderFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [selectedOrderRoute, setSelectedOrderRoute] = useState(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -39,16 +234,24 @@ const AdminPanel = () => {
     try {
       switch (activeTab) {
         case 'dashboard':
-          const statsData = await api('GET', '/admin/stats');
+          const [statsData, driversData] = await Promise.all([
+            api('GET', '/admin/stats'),
+            api('GET', '/drivers/online-locations')
+          ]);
           setStats(statsData);
+          setOnlineDrivers(driversData);
+          break;
+        case 'map':
+          const mapDrivers = await api('GET', '/drivers/online-locations');
+          setOnlineDrivers(mapDrivers);
           break;
         case 'customers':
           const customersData = await api('GET', '/admin/users?role=customer');
           setUsers(customersData);
           break;
         case 'drivers':
-          const driversData = await api('GET', '/admin/users?role=driver');
-          setUsers(driversData);
+          const allDriversData = await api('GET', '/admin/users?role=driver');
+          setUsers(allDriversData);
           break;
         case 'orders':
           const ordersData = await api('GET', '/admin/orders');
@@ -94,14 +297,29 @@ const AdminPanel = () => {
     }
   };
 
-  const handleUpdateUser = async (userId, data) => {
+  const handleUpdateUser = async (userId) => {
     try {
-      await api('POST', `/admin/users/${userId}/update`, data);
+      await api('POST', `/admin/users/${userId}/update`, editForm);
       setEditingUser(null);
+      setEditForm({});
       loadData();
     } catch (error) {
       console.error('Failed to update user');
     }
+  };
+
+  const startEditUser = (user) => {
+    setEditingUser(user.id);
+    setEditForm({
+      name: user.name || '',
+      phone: user.phone || '',
+      balance: user.balance || 0,
+      car_model: user.car_model || '',
+      car_number: user.car_number || '',
+      admin_notes: user.admin_notes || '',
+      is_reliable: user.is_reliable || false,
+      is_activated: user.is_activated !== false
+    });
   };
 
   const handleSaveSettings = async () => {
@@ -124,6 +342,15 @@ const AdminPanel = () => {
       setSelectedUser(data);
     } catch (error) {
       console.error('Failed to load user details');
+    }
+  };
+
+  const viewOrderRoute = async (orderId) => {
+    try {
+      const data = await api('GET', `/admin/orders/${orderId}/route`);
+      setSelectedOrderRoute(data);
+    } catch (error) {
+      console.error('Failed to load order route');
     }
   };
 
@@ -210,6 +437,59 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
+
+      {/* Mini map on dashboard */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <Map className="w-5 h-5 text-slate-400" />
+          Водители на карте
+        </h3>
+        <AdminMap 
+          drivers={onlineDrivers} 
+          onDriverClick={(driver) => viewUserDetails(driver.id)}
+        />
+      </div>
+    </div>
+  );
+
+  const renderMap = () => (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-900">Карта водителей</h2>
+      
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <AdminMap 
+          drivers={onlineDrivers} 
+          onDriverClick={(driver) => viewUserDetails(driver.id)}
+        />
+      </div>
+      
+      {/* Online drivers list */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Список онлайн водителей</h3>
+        <div className="space-y-3">
+          {onlineDrivers.length === 0 ? (
+            <p className="text-slate-500 text-center py-4">Нет водителей онлайн</p>
+          ) : (
+            onlineDrivers.map((driver) => (
+              <div key={driver.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${driver.is_busy ? 'bg-yellow-500' : 'bg-green-500'}`} />
+                  <div>
+                    <p className="font-medium text-slate-900">{driver.name}</p>
+                    <p className="text-sm text-slate-500">{driver.car_model} • {driver.car_number}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-slate-600">{driver.phone}</p>
+                  <span className={`text-xs ${driver.is_busy ? 'text-yellow-600' : 'text-green-600'}`}>
+                    {driver.is_busy ? 'Занят' : 'Свободен'}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 
@@ -252,9 +532,9 @@ const AdminPanel = () => {
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
               <th className="text-left p-4 text-sm font-medium text-slate-600">Телефон</th>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">ФИО</th>
               {role === 'driver' && (
                 <>
-                  <th className="text-left p-4 text-sm font-medium text-slate-600">ФИО</th>
                   <th className="text-left p-4 text-sm font-medium text-slate-600">Авто</th>
                   <th className="text-left p-4 text-sm font-medium text-slate-600">Баланс</th>
                   <th className="text-left p-4 text-sm font-medium text-slate-600">Статус</th>
@@ -270,28 +550,18 @@ const AdminPanel = () => {
                 <td className="p-4">
                   <span className="font-medium text-slate-900">{u.phone}</span>
                 </td>
+                <td className="p-4 text-slate-600">{u.name || '—'}</td>
                 {role === 'driver' && (
                   <>
-                    <td className="p-4 text-slate-600">{u.name || '—'}</td>
                     <td className="p-4">
                       <span className="text-slate-600">{u.car_model}</span>
                       <br />
                       <span className="text-xs text-slate-400">{u.car_number}</span>
                     </td>
                     <td className="p-4">
-                      {editingUser === u.id ? (
-                        <input
-                          type="number"
-                          defaultValue={u.balance}
-                          onBlur={(e) => handleUpdateUser(u.id, { balance: parseInt(e.target.value) })}
-                          className="w-20 px-2 py-1 border rounded"
-                          autoFocus
-                        />
-                      ) : (
-                        <span className={`font-medium ${u.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {u.balance}
-                        </span>
-                      )}
+                      <span className={`font-medium ${u.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {u.balance}
+                      </span>
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col gap-1">
@@ -323,31 +593,29 @@ const AdminPanel = () => {
                     >
                       <Eye className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={() => startEditUser(u)}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                      title="Редактировать"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                     {role === 'driver' && (
-                      <>
+                      !u.is_activated ? (
                         <button
-                          onClick={() => setEditingUser(u.id)}
-                          className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
-                          title="Редактировать баланс"
+                          onClick={() => handleActivateDriver(u.id)}
+                          className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200"
                         >
-                          <Edit2 className="w-4 h-4" />
+                          Активировать
                         </button>
-                        {!u.is_activated ? (
-                          <button
-                            onClick={() => handleActivateDriver(u.id)}
-                            className="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200"
-                          >
-                            Активировать
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleDeactivateDriver(u.id)}
-                            className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200"
-                          >
-                            Деактивировать
-                          </button>
-                        )}
-                      </>
+                      ) : (
+                        <button
+                          onClick={() => handleDeactivateDriver(u.id)}
+                          className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200"
+                        >
+                          Деактив.
+                        </button>
+                      )
                     )}
                   </div>
                 </td>
@@ -394,6 +662,7 @@ const AdminPanel = () => {
               <th className="text-left p-4 text-sm font-medium text-slate-600">Водитель</th>
               <th className="text-left p-4 text-sm font-medium text-slate-600">Статус</th>
               <th className="text-left p-4 text-sm font-medium text-slate-600">Дата</th>
+              <th className="text-right p-4 text-sm font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -440,6 +709,15 @@ const AdminPanel = () => {
                 <td className="p-4 text-sm text-slate-500">
                   {new Date(order.created_at).toLocaleString('ru-RU')}
                 </td>
+                <td className="p-4">
+                  <button
+                    onClick={() => viewOrderRoute(order.id)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200"
+                  >
+                    <Map className="w-4 h-4" />
+                    Маршрут
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -476,7 +754,7 @@ const AdminPanel = () => {
                     {new Date(log.timestamp).toLocaleString('ru-RU')}
                   </td>
                   <td className="p-4">
-                    <span className="font-medium text-slate-900">{log.action}</span>
+                    <span className="font-medium text-slate-900">{log.action_ru || log.action}</span>
                   </td>
                   <td className="p-4 text-sm text-slate-600">
                     {log.user_id?.slice(0, 8) || '—'}
@@ -783,6 +1061,7 @@ const AdminPanel = () => {
 
   const navItems = [
     { id: 'dashboard', icon: BarChart3, label: 'Обзор' },
+    { id: 'map', icon: Map, label: 'Карта' },
     { id: 'customers', icon: Users, label: 'Пассажиры' },
     { id: 'drivers', icon: Car, label: 'Водители' },
     { id: 'orders', icon: ClipboardList, label: 'Заказы' },
@@ -841,6 +1120,7 @@ const AdminPanel = () => {
           ) : (
             <>
               {activeTab === 'dashboard' && renderDashboard()}
+              {activeTab === 'map' && renderMap()}
               {activeTab === 'customers' && renderUsers('customer')}
               {activeTab === 'drivers' && renderUsers('driver')}
               {activeTab === 'orders' && renderOrders()}
@@ -851,6 +1131,109 @@ const AdminPanel = () => {
           )}
         </div>
       </div>
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-slate-900">Редактирование пользователя</h3>
+              <button onClick={() => setEditingUser(null)} className="p-2">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh] space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">ФИО</label>
+                <input
+                  type="text"
+                  value={editForm.name || ''}
+                  onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Телефон</label>
+                <input
+                  type="text"
+                  value={editForm.phone || ''}
+                  onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Баланс поездок</label>
+                <input
+                  type="number"
+                  value={editForm.balance || 0}
+                  onChange={(e) => setEditForm({...editForm, balance: parseInt(e.target.value)})}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Автомобиль</label>
+                <input
+                  type="text"
+                  value={editForm.car_model || ''}
+                  onChange={(e) => setEditForm({...editForm, car_model: e.target.value})}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Номер авто</label>
+                <input
+                  type="text"
+                  value={editForm.car_number || ''}
+                  onChange={(e) => setEditForm({...editForm, car_number: e.target.value})}
+                  className="input-field"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Заметки админа</label>
+                <textarea
+                  value={editForm.admin_notes || ''}
+                  onChange={(e) => setEditForm({...editForm, admin_notes: e.target.value})}
+                  className="input-field min-h-[80px]"
+                />
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_reliable || false}
+                    onChange={(e) => setEditForm({...editForm, is_reliable: e.target.checked})}
+                    className="checkbox-custom"
+                  />
+                  <span className="text-sm text-slate-700">Надёжный водитель</span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_activated !== false}
+                    onChange={(e) => setEditForm({...editForm, is_activated: e.target.checked})}
+                    className="checkbox-custom"
+                  />
+                  <span className="text-sm text-slate-700">Активирован</span>
+                </label>
+              </div>
+              
+              <button
+                onClick={() => handleUpdateUser(editingUser)}
+                className="btn-primary"
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Details Modal */}
       {selectedUser && (
@@ -886,18 +1269,6 @@ const AdminPanel = () => {
                 )}
               </div>
 
-              {selectedUser.user.role === 'driver' && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Заметки админа</label>
-                  <textarea
-                    defaultValue={selectedUser.user.admin_notes || ''}
-                    onBlur={(e) => handleUpdateUser(selectedUser.user.id, { admin_notes: e.target.value })}
-                    className="input-field min-h-[80px]"
-                    placeholder="Добавьте заметки..."
-                  />
-                </div>
-              )}
-
               <h4 className="font-semibold text-slate-900 mb-3">Последние заказы</h4>
               <div className="space-y-2 mb-6">
                 {selectedUser.orders.slice(0, 10).map((order) => (
@@ -923,7 +1294,7 @@ const AdminPanel = () => {
               <div className="space-y-2">
                 {selectedUser.logs.slice(0, 10).map((log) => (
                   <div key={log.id} className="p-3 bg-slate-50 rounded-lg text-sm">
-                    <span className="font-medium">{log.action}</span>
+                    <span className="font-medium">{log.action_ru || log.action}</span>
                     <p className="text-slate-400 text-xs mt-1">
                       {new Date(log.timestamp).toLocaleString('ru-RU')}
                     </p>
@@ -934,6 +1305,12 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
+
+      {/* Route Map Modal */}
+      <RouteMapModal 
+        orderRoute={selectedOrderRoute} 
+        onClose={() => setSelectedOrderRoute(null)} 
+      />
     </div>
   );
 };

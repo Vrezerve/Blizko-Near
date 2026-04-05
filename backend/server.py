@@ -82,6 +82,14 @@ class UserBase(BaseModel):
     name: Optional[str] = None
     avatar: Optional[str] = None
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar: Optional[str] = None
+
+class LocationUpdate(BaseModel):
+    lat: float
+    lng: float
+
 class CustomerCreate(BaseModel):
     phone: str
     agreed_terms: bool = False
@@ -219,9 +227,34 @@ async def get_admin_user(request: Request) -> dict:
     return user
 
 async def log_action(action: str, user_id: str = None, details: dict = None):
+    # Translate action to Russian
+    action_translations = {
+        "customer_registered": "Регистрация пассажира",
+        "driver_registered": "Регистрация водителя",
+        "user_login": "Вход в систему",
+        "admin_login": "Вход администратора",
+        "sms_sent": "Отправлена СМС",
+        "order_created": "Создан заказ",
+        "order_accepted": "Заказ принят",
+        "order_completed": "Заказ завершён",
+        "order_cancelled": "Заказ отменён",
+        "order_problem": "Проблема с заказом",
+        "driver_status_change": "Изменение статуса водителя",
+        "driver_activated": "Водитель активирован",
+        "driver_deactivated": "Водитель деактивирован",
+        "user_updated": "Данные пользователя обновлены",
+        "settings_updated": "Настройки обновлены",
+        "notification_sent": "Уведомление отправлено",
+        "profile_updated": "Профиль обновлён",
+        "location_updated": "Местоположение обновлено"
+    }
+    
+    action_ru = action_translations.get(action, action)
+    
     log_entry = {
         "id": str(uuid.uuid4()),
         "action": action,
+        "action_ru": action_ru,
         "user_id": user_id,
         "details": details or {},
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -381,6 +414,30 @@ async def get_me(user: dict = Depends(get_current_user)):
 async def logout():
     return {"success": True}
 
+@auth_router.post("/update-profile")
+async def update_profile(data: ProfileUpdate, user: dict = Depends(get_current_user)):
+    update_data = {}
+    if data.name is not None:
+        update_data["name"] = data.name
+    if data.avatar is not None:
+        update_data["avatar"] = data.avatar
+    
+    if update_data:
+        await db.users.update_one({"id": user["id"]}, {"$set": update_data})
+        await log_action("profile_updated", user["id"], update_data)
+    
+    updated_user = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return updated_user
+
+@auth_router.post("/update-location")
+async def update_location(data: LocationUpdate, user: dict = Depends(get_current_user)):
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"location": {"lat": data.lat, "lng": data.lng}, "location_updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await log_action("location_updated", user["id"], {"lat": data.lat, "lng": data.lng})
+    return {"success": True}
+
 # ============ ORDERS ROUTES ============
 
 @orders_router.post("/create")
@@ -447,6 +504,30 @@ async def get_my_orders(user: dict = Depends(get_current_user)):
         orders = await db.orders.find({"customer_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
     else:
         orders = await db.orders.find({"driver_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return orders
+
+@orders_router.get("/history")
+async def get_order_history(user: dict = Depends(get_current_user)):
+    """Get order history with status changes for user's app"""
+    if user["role"] == "customer":
+        orders = await db.orders.find({"customer_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    else:
+        orders = await db.orders.find({"driver_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    
+    # Add status history for each order
+    for order in orders:
+        history = []
+        history.append({"status": "created", "status_ru": "Создан", "time": order["created_at"]})
+        if order.get("accepted_at"):
+            history.append({"status": "accepted", "status_ru": "Принят", "time": order["accepted_at"]})
+        if order.get("completed_at"):
+            history.append({"status": "completed", "status_ru": "Завершён", "time": order["completed_at"]})
+        if order.get("cancelled_at"):
+            history.append({"status": "cancelled", "status_ru": "Отменён", "time": order["cancelled_at"]})
+        if order.get("status") == "problem":
+            history.append({"status": "problem", "status_ru": "Проблема", "time": order.get("completed_at") or order.get("accepted_at")})
+        order["history"] = history
+    
     return orders
 
 @orders_router.get("/active")
@@ -659,6 +740,15 @@ async def get_driver_stats():
     busy_count = await db.users.count_documents({"role": "driver", "is_online": True, "is_busy": True})
     return {"online": online_count, "busy": busy_count, "available": online_count - busy_count}
 
+@drivers_router.get("/online-locations")
+async def get_online_driver_locations(user: dict = Depends(get_admin_user)):
+    """Get all online drivers with their locations for admin map"""
+    drivers = await db.users.find(
+        {"role": "driver", "is_online": True, "is_activated": True},
+        {"_id": 0, "id": 1, "name": 1, "phone": 1, "car_model": 1, "car_number": 1, "location": 1, "is_busy": 1}
+    ).to_list(100)
+    return drivers
+
 # ============ ADMIN ROUTES ============
 
 @admin_router.post("/login")
@@ -722,13 +812,34 @@ async def deactivate_driver(user_id: str, user: dict = Depends(get_admin_user)):
 
 @admin_router.post("/users/{user_id}/update")
 async def update_user(user_id: str, data: dict, user: dict = Depends(get_admin_user)):
-    allowed_fields = ["name", "balance", "admin_notes", "is_reliable", "car_model", "car_number"]
+    allowed_fields = ["name", "balance", "admin_notes", "is_reliable", "car_model", "car_number", "phone", "avatar", "is_activated"]
     update_data = {k: v for k, v in data.items() if k in allowed_fields}
     
     await db.users.update_one({"id": user_id}, {"$set": update_data})
     await log_action("user_updated", user_id, {"updated_by": user["id"], "fields": list(update_data.keys())})
     
     return {"success": True}
+
+@admin_router.get("/orders/{order_id}/route")
+async def get_order_route(order_id: str, user: dict = Depends(get_admin_user)):
+    """Get order details for route display"""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Get customer info
+    customer = await db.users.find_one({"id": order["customer_id"]}, {"_id": 0, "location": 1, "phone": 1, "name": 1})
+    
+    # Get driver info if assigned
+    driver = None
+    if order.get("driver_id"):
+        driver = await db.users.find_one({"id": order["driver_id"]}, {"_id": 0, "location": 1, "phone": 1, "name": 1, "car_model": 1, "car_number": 1})
+    
+    return {
+        "order": order,
+        "customer": customer,
+        "driver": driver
+    }
 
 @admin_router.get("/orders")
 async def get_all_orders(status: Optional[str] = None, user: dict = Depends(get_admin_user)):

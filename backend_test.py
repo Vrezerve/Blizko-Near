@@ -195,6 +195,13 @@ class TaxiAPITester:
                 f"Status: {status}, Response: {data}"
             )
         
+        # Send verification code for driver first
+        send_code_data = {
+            "phone": test_phone,
+            "role": "driver"
+        }
+        self.make_request('POST', 'auth/send-code', send_code_data)
+        
         # Try to verify code (should fail if not activated)
         verify_data = {
             "phone": test_phone,
@@ -285,7 +292,7 @@ class TaxiAPITester:
         self.log_test(
             "Create Order",
             success and 'id' in data,
-            f"Status: {status}, Order ID: {data.get('id', 'None')[:8] if data.get('id') else 'None'}"
+            f"Status: {status}, Response: {data}, Order ID: {data.get('id', 'None')[:8] if data.get('id') else 'None'}"
         )
         
         if success and 'id' in data:
