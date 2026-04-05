@@ -1,0 +1,132 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast with Pleasant Green adaptation)",
+  "typography": {
+    "headings": {
+      "family": "Outfit, sans-serif",
+      "weights": ["600", "700"],
+      "usage": "Use for all page titles, hero text, and primary metric numbers.",
+      "styles": "tracking-tight"
+    },
+    "body": {
+      "family": "DM Sans, sans-serif",
+      "weights": ["400", "500", "600"],
+      "usage": "Use for all paragraphs, labels, form inputs, and buttons.",
+      "styles": "leading-relaxed"
+    },
+    "scales": {
+      "h1": "text-4xl sm:text-5xl",
+      "h2": "text-2xl sm:text-3xl",
+      "h3": "text-xl sm:text-2xl",
+      "h4": "text-lg sm:text-xl",
+      "body": "text-base",
+      "small": "text-sm",
+      "xs": "text-xs"
+    }
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#16A34A",
+      "foreground": "#FFFFFF",
+      "hover": "#15803D"
+    },
+    "background": {
+      "DEFAULT": "#F8FAFC",
+      "sheet": "#FFFFFF",
+      "map_grid": "#E2E8F0"
+    },
+    "foreground": {
+      "DEFAULT": "#0F172A",
+      "muted": "#64748B"
+    },
+    "border": {
+      "DEFAULT": "#E2E8F0",
+      "active": "#16A34A"
+    },
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444"
+    }
+  },
+  "layout": {
+    "mobile_first": true,
+    "container": "w-full max-w-md mx-auto relative min-h-[100dvh] bg-slate-50 overflow-hidden shadow-2xl",
+    "spacing": {
+      "comfortable": "p-6",
+      "dense": "p-4",
+      "generous": "p-8",
+      "gap": "gap-4"
+    },
+    "border_radius": {
+      "card": "rounded-2xl",
+      "button": "rounded-full",
+      "input": "rounded-xl"
+    }
+  },
+  "components": {
+    "bottom_sheet": {
+      "style": "fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-50 transform transition-transform duration-300",
+      "padding": "p-6 pb-safe-8",
+      "usage": "Primary navigation and interaction pattern for order creation, driver details, and address input."
+    },
+    "map_background": {
+      "style": "absolute inset-0 bg-slate-50 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:32px_32px] z-0",
+      "usage": "Simulation of map background when actual map integration is not present or loading."
+    },
+    "button": {
+      "primary": "w-full bg-primary text-white font-semibold py-4 px-6 rounded-full shadow-lg hover:shadow-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+      "secondary": "w-full bg-slate-100 text-slate-900 font-semibold py-4 px-6 rounded-full hover:bg-slate-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2",
+      "icon": "w-12 h-12 bg-white text-slate-900 rounded-full shadow-md flex items-center justify-center hover:bg-slate-50"
+    },
+    "input_field": {
+      "wrapper": "relative w-full",
+      "input": "w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-xl px-4 py-4 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none",
+      "label": "block text-sm font-medium text-slate-700 mb-2"
+    },
+    "card": {
+      "style": "bg-white rounded-2xl p-4 shadow-sm border border-slate-100"
+    }
+  },
+  "animations": {
+    "sheet_up": "translate-y-0 opacity-100 transition-all duration-300 ease-out",
+    "sheet_down": "translate-y-full opacity-0 transition-all duration-300 ease-in",
+    "pulse_dot": "animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-20",
+    "hover": "transition-all duration-200 hover:-translate-y-0.5"
+  },
+  "media": {
+    "images": [
+      {
+        "category": "user_avatar_1",
+        "url": "https://images.unsplash.com/photo-1762522921456-cdfe882d36c3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwyfHxwb3J0cmFpdCUyMHlvdW5nJTIwcHJvZmVzc2lvbmFsJTIwc21pbGluZ3xlbnwwfHx8fDE3NzUzNjQ0MjR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Passenger Profile Avatar"
+      },
+      {
+        "category": "user_avatar_2",
+        "url": "https://images.unsplash.com/photo-1771898343647-bd979ad8cca5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwzfHxwb3J0cmFpdCUyMHlvdW5nJTIwcHJvZmVzc2lvbmFsJTIwc21pbGluZ3xlbnwwfHx8fDE3NzUzNjQ0MjR8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Driver Profile Avatar"
+      },
+      {
+        "category": "map_location_pin",
+        "url": "https://images.unsplash.com/photo-1718049860799-90b2a3876d6d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwyfHxtYXAlMjBsb2NhdGlvbiUyMHJvdXRlJTIwY2xlYW4lMjBtaW5pbWFsfGVufDB8fHx8MTc3NTM2NDQyOXww&ixlib=rb-4.1.0&q=85",
+        "description": "Map pins and routing concept"
+      }
+    ]
+  },
+  "icons_library": "lucide-react",
+  "accessibility": {
+    "contrast_requirements": "All text must pass WCAG AA (4.5:1). Do not place white text on light green buttons.",
+    "testing_attributes": "All interactive elements MUST include data-testid. E.g., data-testid='login-submit-btn', data-testid='order-address-input'.",
+    "touch_targets": "Minimum 48x48px for all mobile action buttons."
+  },
+  "instructions_to_main_agent": [
+    "1. For the WebToApp mobile simulation, wrap the main `<App />` layout in a container with `max-w-md mx-auto min-h-[100dvh] relative overflow-hidden bg-slate-50`. This creates the phone form-factor on desktop, and native feel on mobile.",
+    "2. Implement the Map Background using the CSS grid utility provided in components.map_background.",
+    "3. Role selection and Login should use clean card-based options. Add a phone verification mock step (input digits).",
+    "4. Heavy use of Bottom Sheets. The customer 'Order ride' screen should be a map background with a persistent bottom sheet containing the address inputs.",
+    "5. Use `lucide-react` icons (e.g. MapPin, Navigation, Car, Menu, User).",
+    "6. Admin panel can break out of the mobile container (`max-w-7xl` instead of `max-w-md`) since admins use desktop.",
+    "7. Include OneSignal mock toggles or API setting inputs in the Admin screen.",
+    "8. MANDATORY: Ensure EVERY interactive element has `data-testid`."
+  ]
+}
