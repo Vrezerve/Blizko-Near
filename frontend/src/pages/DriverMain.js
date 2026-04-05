@@ -1,0 +1,576 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { 
+  Power, MapPin, Phone, Check, AlertTriangle, 
+  Loader2, Menu, User, LogOut, Wallet, X, Clock
+} from 'lucide-react';
+import axios from 'axios';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+const DriverMain = () => {
+  const navigate = useNavigate();
+  const { user, token, logout, api, refreshUser } = useAuth();
+  
+  const [isReady, setIsReady] = useState(false);
+  const [agreedRules, setAgreedRules] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [settings, setSettings] = useState(null);
+  
+  const [currentOrder, setCurrentOrder] = useState(null);
+  const [availableOrders, setAvailableOrders] = useState([]);
+  const [completeCooldown, setCompleteCooldown] = useState(0);
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showMenu, setShowMenu] = useState(false);
+  const [showProblem, setShowProblem] = useState(false);
+  const [problemReason, setProblemReason] = useState('');
+  const [problemText, setProblemText] = useState('');
+  
+  const wsRef = useRef(null);
+
+  useEffect(() => {
+    if (!user || user.role !== 'driver') {
+      navigate('/');
+      return;
+    }
+
+    if (!user.is_activated) {
+      navigate('/auth/driver');
+      return;
+    }
+
+    setIsReady(user.is_online || false);
+
+    // Fetch settings
+    const fetchSettings = async () => {
+      try {
+        const response = await axios.get(`${API}/settings/public`);
+        setSettings(response.data);
+      } catch (error) {
+        console.error('Failed to fetch settings');
+      }
+    };
+    fetchSettings();
+
+    // Fetch active orders
+    const fetchOrders = async () => {
+      try {
+        const data = await api('GET', '/orders/active');
+        if (data?.current_order) {
+          setCurrentOrder(data.current_order);
+          
+          // Calculate remaining cooldown
+          if (data.current_order.accepted_at) {
+            const acceptedAt = new Date(data.current_order.accepted_at);
+            const elapsed = (Date.now() - acceptedAt.getTime()) / 1000;
+            const remaining = Math.max(0, 120 - Math.floor(elapsed));
+            setCompleteCooldown(remaining);
+          }
+        } else {
+          setCurrentOrder(null);
+        }
+        setAvailableOrders(data?.available_orders || []);
+      } catch (error) {
+        console.error('Failed to fetch orders');
+      }
+    };
+    
+    fetchOrders();
+    const ordersInterval = setInterval(fetchOrders, 5000);
+
+    // Setup WebSocket
+    const wsUrl = process.env.REACT_APP_BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+    wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
+    
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'new_order' && isReady && !currentOrder) {
+        setAvailableOrders(prev => [data.order, ...prev.filter(o => o.id !== data.order.id)]);
+      } else if (data.type === 'order_taken') {
+        setAvailableOrders(prev => prev.filter(o => o.id !== data.order_id));
+      }
+    };
+
+    return () => {
+      clearInterval(ordersInterval);
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [user, navigate, api, isReady, currentOrder]);
+
+  // Complete cooldown countdown
+  useEffect(() => {
+    if (completeCooldown > 0) {
+      const timer = setTimeout(() => setCompleteCooldown(completeCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [completeCooldown]);
+
+  const handleToggleReady = async () => {
+    if (!isReady && !agreedRules) {
+      setError('Необходимо согласиться с правилами');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await api('POST', '/drivers/toggle-ready');
+      setIsReady(result.is_online);
+      
+      if (!result.is_online) {
+        setAvailableOrders([]);
+      }
+    } catch (error) {
+      setError(error.response?.data?.detail || 'Ошибка');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAcceptOrder = async (orderId) => {
+    if (user.balance <= 0 && !user.is_reliable) {
+      setError('Недостаточно баланса для принятия заказов');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const order = await api('POST', `/orders/accept/${orderId}`);
+      setCurrentOrder(order);
+      setAvailableOrders([]);
+      setCompleteCooldown(120);
+      await refreshUser();
+    } catch (error) {
+      setError(error.response?.data?.detail || 'Заказ уже недоступен');
+      // Refresh orders list
+      const data = await api('GET', '/orders/active');
+      setAvailableOrders(data?.available_orders || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteOrder = async () => {
+    if (!currentOrder) return;
+    
+    if (completeCooldown > 0) {
+      setError(`Подождите ещё ${formatTime(completeCooldown)}`);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      await api('POST', `/orders/complete/${currentOrder.id}`);
+      setCurrentOrder(null);
+      await refreshUser();
+    } catch (error) {
+      const detail = error.response?.data?.detail;
+      if (detail?.startsWith('WAIT:')) {
+        const seconds = parseInt(detail.split(':')[1]);
+        setCompleteCooldown(seconds);
+        setError(`Подождите ещё ${formatTime(seconds)}`);
+      } else {
+        setError(detail || 'Ошибка завершения');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReportProblem = async () => {
+    if (!currentOrder || !problemReason) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      await api('POST', `/orders/problem/${currentOrder.id}`, {
+        order_id: currentOrder.id,
+        reason: problemReason,
+        text: problemText || null
+      });
+      
+      setCurrentOrder(null);
+      setShowProblem(false);
+      setProblemReason('');
+      setProblemText('');
+      await refreshUser();
+    } catch (error) {
+      setError(error.response?.data?.detail || 'Ошибка отправки');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const renderContent = () => {
+    if (currentOrder) {
+      return (
+        <div className="space-y-5">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <MapPin className="w-6 h-6 text-green-600" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900">Текущий заказ</h2>
+          </div>
+
+          <div className="card">
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm text-slate-500">Адрес</p>
+                <p className="font-semibold text-slate-900">{currentOrder.address}</p>
+                <p className="text-lg font-bold text-green-600">д. {currentOrder.house_number}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Телефон клиента</p>
+                <p className="font-medium text-slate-900">{currentOrder.customer_phone}</p>
+              </div>
+            </div>
+          </div>
+
+          <a
+            href={`tel:${currentOrder.customer_phone}`}
+            data-testid="call-customer-btn"
+            className="btn-secondary"
+          >
+            <Phone className="w-5 h-5" />
+            Позвонить клиенту
+          </a>
+
+          <button
+            data-testid="complete-order-btn"
+            onClick={handleCompleteOrder}
+            disabled={loading || completeCooldown > 0}
+            className="btn-primary"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+              <>
+                <Check className="w-5 h-5" />
+                {completeCooldown > 0 ? `Завершить (${formatTime(completeCooldown)})` : 'Завершено'}
+              </>
+            )}
+          </button>
+
+          <button
+            data-testid="problem-btn"
+            onClick={() => setShowProblem(true)}
+            className="btn-danger"
+          >
+            <AlertTriangle className="w-5 h-5" />
+            Проблема
+          </button>
+
+          {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        </div>
+      );
+    }
+
+    if (!isReady) {
+      return (
+        <div className="space-y-6">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Power className="w-10 h-10 text-slate-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Вы не на линии</h2>
+            <p className="text-slate-500">Включите режим работы для получения заказов</p>
+          </div>
+
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Wallet className="w-5 h-5 text-slate-400" />
+                <span className="text-slate-700">Баланс поездок</span>
+              </div>
+              <span className={`font-bold ${user?.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {user?.balance || 0}
+              </span>
+            </div>
+          </div>
+
+          {user?.balance <= 0 && !user?.is_reliable && (
+            <div className="bg-red-50 rounded-xl p-4 text-center">
+              <p className="text-red-600 font-medium">Недостаточно баланса</p>
+              <p className="text-red-500 text-sm">Пополните баланс для принятия заказов</p>
+            </div>
+          )}
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              data-testid="driver-rules-checkbox"
+              type="checkbox"
+              checked={agreedRules}
+              onChange={(e) => setAgreedRules(e.target.checked)}
+              className="checkbox-custom mt-0.5"
+            />
+            <span className="text-sm text-slate-600">
+              Согласен с{' '}
+              <button type="button" onClick={() => setShowRules(true)} className="text-green-600 underline">
+                правилами платформы
+              </button>
+            </span>
+          </label>
+
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+
+          <button
+            data-testid="toggle-ready-btn"
+            onClick={handleToggleReady}
+            disabled={loading || !agreedRules || (user?.balance <= 0 && !user?.is_reliable)}
+            className="btn-primary"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+              <>
+                <Power className="w-5 h-5" />
+                Выйти на линию
+              </>
+            )}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Активные заявки</h2>
+            <p className="text-sm text-slate-500">{availableOrders.length} доступно</p>
+          </div>
+          <button
+            data-testid="go-offline-btn"
+            onClick={handleToggleReady}
+            disabled={loading}
+            className="px-4 py-2 bg-red-100 text-red-600 rounded-full text-sm font-medium"
+          >
+            Выйти
+          </button>
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Wallet className="w-5 h-5 text-slate-400" />
+              <span className="text-slate-700">Баланс</span>
+            </div>
+            <span className={`font-bold ${user?.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {user?.balance || 0}
+            </span>
+          </div>
+        </div>
+
+        {availableOrders.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-8 h-8 text-slate-400" />
+            </div>
+            <p className="text-slate-500">Ожидание заявок...</p>
+            <p className="text-sm text-slate-400 mt-1">Новые заявки появятся автоматически</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+            {availableOrders.map((order) => (
+              <div key={order.id} className="card fade-in">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      <p className="font-medium text-slate-900">{order.address}</p>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {new Date(order.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <button
+                    data-testid={`accept-order-${order.id}`}
+                    onClick={() => handleAcceptOrder(order.id)}
+                    disabled={loading}
+                    className="px-4 py-2 bg-green-600 text-white rounded-full text-sm font-medium hover:bg-green-700 transition-colors"
+                  >
+                    Принять
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="app-container">
+      <div className="map-background" />
+      
+      <div className="relative z-10 min-h-[100dvh] flex flex-col">
+        {/* Header */}
+        <div className="p-4 flex items-center justify-between">
+          <button
+            data-testid="driver-menu-btn"
+            onClick={() => setShowMenu(true)}
+            className="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center"
+          >
+            <Menu className="w-5 h-5 text-slate-700" />
+          </button>
+          
+          <div className={`rounded-full shadow px-4 py-2 flex items-center gap-2 ${isReady ? 'bg-green-600' : 'bg-white'}`}>
+            <div className={`w-2 h-2 rounded-full ${isReady ? 'bg-white pulse-dot' : 'bg-slate-400'}`} />
+            <span className={`text-sm font-medium ${isReady ? 'text-white' : 'text-slate-700'}`}>
+              {isReady ? 'На линии' : 'Не на линии'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 flex items-end">
+          <div className="bottom-sheet slide-up">
+            {renderContent()}
+          </div>
+        </div>
+      </div>
+
+      {/* Menu Drawer */}
+      {showMenu && (
+        <div className="fixed inset-0 bg-black/50 z-50" onClick={() => setShowMenu(false)}>
+          <div 
+            className="absolute left-0 top-0 bottom-0 w-72 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                <User className="w-8 h-8 text-blue-600" />
+              </div>
+              <p className="font-semibold text-slate-900">{user?.name}</p>
+              <p className="text-sm text-slate-500">{user?.phone}</p>
+              <p className="text-sm text-slate-500">{user?.car_model} • {user?.car_number}</p>
+            </div>
+            
+            <div className="p-4 space-y-2">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <span className="text-slate-600">Баланс поездок</span>
+                <span className={`font-bold ${user?.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {user?.balance || 0}
+                </span>
+              </div>
+              
+              <button
+                data-testid="driver-logout-btn"
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                Выйти
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rules Modal */}
+      {showRules && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-slate-900">Правила для водителей</h3>
+              <button onClick={() => setShowRules(false)} className="p-2">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <p className="text-slate-600 whitespace-pre-line">
+                {settings?.driver_rules_text || 'Правила для водителей...'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Problem Modal */}
+      {showProblem && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="font-semibold text-slate-900">Сообщить о проблеме</h3>
+              <button onClick={() => setShowProblem(false)} className="p-2">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <button
+                data-testid="problem-client-not-out"
+                onClick={() => setProblemReason('client_not_out')}
+                className={`w-full p-4 text-left border rounded-xl transition-colors ${
+                  problemReason === 'client_not_out' ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'
+                }`}
+              >
+                Клиент не вышел
+              </button>
+              
+              <button
+                data-testid="problem-wrong-address"
+                onClick={() => setProblemReason('wrong_address')}
+                className={`w-full p-4 text-left border rounded-xl transition-colors ${
+                  problemReason === 'wrong_address' ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'
+                }`}
+              >
+                Неверный адрес
+              </button>
+              
+              <button
+                data-testid="problem-other"
+                onClick={() => setProblemReason('other')}
+                className={`w-full p-4 text-left border rounded-xl transition-colors ${
+                  problemReason === 'other' ? 'border-green-500 bg-green-50' : 'hover:bg-slate-50'
+                }`}
+              >
+                Другое
+              </button>
+
+              {problemReason === 'other' && (
+                <textarea
+                  data-testid="driver-problem-text"
+                  value={problemText}
+                  onChange={(e) => setProblemText(e.target.value)}
+                  className="input-field min-h-[100px]"
+                  placeholder="Опишите проблему..."
+                />
+              )}
+
+              <button
+                data-testid="submit-problem-btn"
+                onClick={handleReportProblem}
+                disabled={loading || !problemReason || (problemReason === 'other' && !problemText.trim())}
+                className="btn-primary mt-4"
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Отправить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DriverMain;
