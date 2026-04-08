@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Car, Delete, Loader2, Check } from 'lucide-react';
+import { Delete, Loader2 } from 'lucide-react';
+import { AppLogo } from '../components/AppLogo';
 
 const PinSetup = () => {
   const navigate = useNavigate();
@@ -85,12 +86,7 @@ const PinSetup = () => {
         {/* Top section */}
         <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-4">
           {/* Logo */}
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-              <Car className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-slate-900 tracking-tight">Рядом</span>
-          </div>
+          <AppLogo size="md" className="mb-8" />
 
           {/* Title */}
           <h1 className="text-2xl font-bold text-slate-900 mb-1">

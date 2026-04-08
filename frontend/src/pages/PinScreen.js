@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Car, Delete, HelpCircle, Loader2 } from 'lucide-react';
+import { Delete, HelpCircle, Loader2 } from 'lucide-react';
+import { AppLogo } from '../components/AppLogo';
 
 const PinScreen = () => {
   const navigate = useNavigate();
@@ -121,12 +122,7 @@ const PinScreen = () => {
       <div className="app-container">
         <div className="min-h-[100dvh] flex flex-col bg-white">
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
-            <div className="flex items-center gap-2 mb-8">
-              <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-                <Car className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-slate-900 tracking-tight">Рядом</span>
-            </div>
+            <AppLogo size="md" className="mb-8" />
 
             {resetStep === 'code' && (
               <div className="w-full max-w-xs space-y-6 text-center">
@@ -209,12 +205,7 @@ const PinScreen = () => {
         {/* Top section with logo and instructions */}
         <div className="flex-1 flex flex-col items-center justify-center px-6 pt-12 pb-4">
           {/* Logo */}
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
-              <Car className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-slate-900 tracking-tight">Рядом</span>
-          </div>
+          <AppLogo size="md" className="mb-8" />
 
           {/* Title */}
           <h1 className="text-2xl font-bold text-slate-900 mb-1">Введите код</h1>

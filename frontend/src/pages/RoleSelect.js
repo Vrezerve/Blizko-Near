@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Car, User, Shield, ChevronRight, Loader2 } from 'lucide-react';
+import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -72,12 +73,9 @@ const RoleSelect = () => {
       
       <div className="relative z-10 flex flex-col min-h-[100dvh] p-6">
         <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="w-20 h-20 bg-green-600 rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-            <Car className="w-10 h-10 text-white" />
-          </div>
+          <AppLogo size="lg" className="mb-6" />
           
-          <h1 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Такси</h1>
-          <p className="text-slate-500 mb-12">Быстро и удобно</p>
+          <p className="text-slate-500 mb-10 text-center">Выберите как вы хотите использовать сервис</p>
           
           <div className="w-full space-y-4">
             <button

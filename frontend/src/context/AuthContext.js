@@ -87,8 +87,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   const setPin = async (pin) => {
+    const authToken = token || localStorage.getItem('taxi_token');
     const response = await axios.post(`${API}/auth/set-pin`, { pin }, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${authToken}` }
     });
     localStorage.setItem('taxi_has_pin', 'true');
     if (user) {

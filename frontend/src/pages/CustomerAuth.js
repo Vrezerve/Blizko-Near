@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Phone, Loader2, Check, FileText, X } from 'lucide-react';
+import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -20,12 +21,14 @@ const CustomerAuth = () => {
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [redirectingToPin, setRedirectingToPin] = useState(false);
 
   useEffect(() => {
+    if (redirectingToPin) return;
     if (user && user.role === 'customer') {
       navigate('/customer');
     }
-  }, [user, navigate]);
+  }, [user, navigate, redirectingToPin]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -102,6 +105,7 @@ const CustomerAuth = () => {
       const result = await verifyCode(getCleanPhone(), code, 'customer');
       // If user doesn't have PIN yet, redirect to PIN setup
       if (!result.has_pin) {
+        setRedirectingToPin(true);
         navigate('/auth/pin-setup');
       } else {
         navigate('/customer');
@@ -237,7 +241,7 @@ const CustomerAuth = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Код из СМС</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Код подтверждения</label>
                   <input
                     data-testid="code-input"
                     type="text"
@@ -252,6 +256,7 @@ const CustomerAuth = () => {
                     placeholder="• • • •"
                     autoFocus
                   />
+                  <p className="text-xs text-slate-400 mt-2 text-center">Для тестирования используйте код: 1234</p>
                 </div>
 
                 {error && (
@@ -271,10 +276,6 @@ const CustomerAuth = () => {
                     </>
                   )}
                 </button>
-
-                <p className="text-center text-sm text-slate-500">
-                  Для тестирования используйте код: <span className="font-mono font-bold">1234</span>
-                </p>
               </div>
             )}
           </div>

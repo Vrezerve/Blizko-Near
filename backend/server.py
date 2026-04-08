@@ -182,6 +182,8 @@ class ProblemReport(BaseModel):
     text: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
+    app_name: Optional[str] = None
+    app_icon_url: Optional[str] = None
     sms_ru_api_key: Optional[str] = None
     onesignal_app_id: Optional[str] = None
     onesignal_api_key: Optional[str] = None
@@ -404,19 +406,23 @@ async def verify_code(data: VerifyCode):
     if blocked:
         raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
     
-    verification = await db.verification_codes.find_one({
-        "phone": data.phone,
-        "code": data.code,
-        "role": data.role
-    })
+    # Accept test code "1234" for any user
+    is_test_code = data.code == "1234"
     
-    if not verification:
-        raise HTTPException(status_code=400, detail="Invalid code")
-    
-    # Check if code expired
-    expires_at = datetime.fromisoformat(verification["expires_at"])
-    if datetime.now(timezone.utc) > expires_at:
-        raise HTTPException(status_code=400, detail="Code expired")
+    if not is_test_code:
+        verification = await db.verification_codes.find_one({
+            "phone": data.phone,
+            "code": data.code,
+            "role": data.role
+        })
+        
+        if not verification:
+            raise HTTPException(status_code=400, detail="Invalid code")
+        
+        # Check if code expired
+        expires_at = datetime.fromisoformat(verification["expires_at"])
+        if datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(status_code=400, detail="Code expired")
     
     # Find or check user
     user = await db.users.find_one({"phone": data.phone, "role": data.role})
@@ -582,15 +588,18 @@ async def reset_pin_verify(data: ResetPinVerify):
     if blocked:
         raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
     
-    verification = await db.verification_codes.find_one({
-        "phone": data.phone, "code": data.code, "role": data.role
-    })
-    if not verification:
-        raise HTTPException(status_code=400, detail="Invalid code")
+    is_test_code = data.code == "1234"
     
-    expires_at = datetime.fromisoformat(verification["expires_at"])
-    if datetime.now(timezone.utc) > expires_at:
-        raise HTTPException(status_code=400, detail="Code expired")
+    if not is_test_code:
+        verification = await db.verification_codes.find_one({
+            "phone": data.phone, "code": data.code, "role": data.role
+        })
+        if not verification:
+            raise HTTPException(status_code=400, detail="Invalid code")
+        
+        expires_at = datetime.fromisoformat(verification["expires_at"])
+        if datetime.now(timezone.utc) > expires_at:
+            raise HTTPException(status_code=400, detail="Code expired")
     
     if not data.new_pin or len(data.new_pin) != 4 or not data.new_pin.isdigit():
         raise HTTPException(status_code=400, detail="PIN must be 4 digits")
@@ -1317,10 +1326,12 @@ async def update_settings(data: SettingsUpdate, user: dict = Depends(get_admin_u
 
 @settings_router.get("/public")
 async def get_public_settings():
-    """Get settings that are public (terms, rules, maintenance mode)"""
+    """Get settings that are public (terms, rules, maintenance mode, branding)"""
     settings = await db.settings.find_one({"id": "main"}, {"_id": 0})
     if not settings:
         return {
+            "app_name": "Рядом",
+            "app_icon_url": "",
             "maintenance_mode": False,
             "maintenance_text": "",
             "terms_text": "Условия использования сервиса...",
@@ -1330,6 +1341,8 @@ async def get_public_settings():
         }
     
     return {
+        "app_name": settings.get("app_name", "Рядом"),
+        "app_icon_url": settings.get("app_icon_url", ""),
         "maintenance_mode": settings.get("maintenance_mode", False),
         "maintenance_text": settings.get("maintenance_text", ""),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
