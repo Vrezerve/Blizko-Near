@@ -31,6 +31,25 @@
 
 ---
 
+## Альтернативный способ: Установка через ISPmanager
+
+> Если на вашем VDS Timeweb установлена панель **ISPmanager 6**, вы можете выполнить часть настройки через графический интерфейс. Ниже — пошаговая инструкция.
+
+- [ISP Шаг 1: Вход в ISPmanager](#isp-шаг-1-вход-в-ispmanager)
+- [ISP Шаг 2: Установка ПО через панель](#isp-шаг-2-установка-по-через-панель)
+- [ISP Шаг 3: Создание пользователя](#isp-шаг-3-создание-пользователя)
+- [ISP Шаг 4: Создание сайта (домена)](#isp-шаг-4-создание-сайта-домена)
+- [ISP Шаг 5: SSL-сертификат](#isp-шаг-5-ssl-сертификат-через-панель)
+- [ISP Шаг 6: Установка MongoDB через Shell](#isp-шаг-6-установка-mongodb-через-shell)
+- [ISP Шаг 7: Загрузка файлов через файловый менеджер](#isp-шаг-7-загрузка-файлов-через-файловый-менеджер)
+- [ISP Шаг 8: Настройка бэкенда через Shell-клиент](#isp-шаг-8-настройка-бэкенда-через-shell-клиент)
+- [ISP Шаг 9: Сборка фронтенда](#isp-шаг-9-сборка-фронтенда)
+- [ISP Шаг 10: Настройка Nginx-прокси](#isp-шаг-10-настройка-nginx-прокси)
+- [ISP Шаг 11: Настройка файрвола в панели](#isp-шаг-11-настройка-файрвола-в-панели)
+- [ISP Шаг 12: Проверка и запуск](#isp-шаг-12-проверка-и-запуск)
+
+---
+
 ## 1. Покупка VDS на Timeweb
 
 ### Шаг 1: Зайдите на сайт Timeweb
@@ -1075,3 +1094,719 @@ mongosh taxi_production --eval "
 ---
 
 > **Нужна помощь?** Если что-то не получается — перечитайте раздел «Решение проблем» или обратитесь в поддержку Timeweb.
+
+---
+---
+
+# Установка через ISPmanager 6 (пошагово)
+
+> Этот раздел — альтернативный способ установки для тех, у кого на VDS стоит панель ISPmanager 6.
+> Если вы уже установили всё через терминал (разделы 1–20 выше) — этот раздел НЕ нужен.
+
+---
+
+## ISP Шаг 1: Вход в ISPmanager
+
+### 1.1 Откройте панель управления
+
+После покупки VDS на Timeweb с ISPmanager вы получите данные для входа:
+
+```
+Адрес панели: https://185.104.XXX.XXX:1500
+Логин: root
+Пароль: (пароль от сервера)
+```
+
+Откройте этот адрес в браузере. Браузер покажет предупреждение о сертификате — нажмите **«Дополнительно» → «Перейти на сайт»** (это безопасно для вашего сервера).
+
+### 1.2 Первый вход
+
+1. Введите логин `root` и пароль
+2. Панель попросит принять лицензионное соглашение — примите
+3. Вы попадёте на главную страницу ISPmanager
+
+Главное меню находится **слева**. Основные разделы:
+- **Сайты** — управление сайтами
+- **Домены** → **WWW-домены** — настройка доменов
+- **Настройки** → **Конфигурация ПО** — установка программ
+- **Инструменты** → **Shell-клиент** — терминал в браузере
+- **Файловый менеджер** — загрузка файлов
+
+---
+
+## ISP Шаг 2: Установка ПО через панель
+
+### 2.1 Установка Nginx
+
+1. В левом меню: **Настройки** → **Конфигурация ПО**
+2. Найдите строку **Nginx**
+3. Нажмите на неё → кнопка **«Установить»**
+4. Дождитесь установки (1-2 минуты)
+5. Статус станет **зелёным** — значит Nginx установлен
+
+> **ВАЖНО:** Nginx нужно ставить ДО Node.js. Иначе панель не сможет создать прокси.
+
+### 2.2 Установка Node.js
+
+1. Остаёмся в **Конфигурация ПО**
+2. Найдите строку **Node.js**
+3. Нажмите на неё → **«Установить ПО»**
+4. Панель автоматически установит:
+   - Последнюю LTS-версию Node.js
+   - Менеджер пакетов npm
+   - Менеджер процессов pm2
+5. Дождитесь зелёного статуса
+
+### 2.3 Установка Python (если не установлен)
+
+1. В **Конфигурация ПО** найдите **Python**
+2. Если статус серый — нажмите **«Установить»**
+3. Дождитесь установки
+
+### 2.4 Проверка
+
+После установки ваш список ПО должен выглядеть так:
+
+| Программа | Статус |
+|-----------|--------|
+| Nginx | Зелёный (активен) |
+| Node.js | Зелёный (активен) |
+| Python | Зелёный (активен) |
+
+---
+
+## ISP Шаг 3: Создание пользователя
+
+> Рекомендуется создать отдельного пользователя для сайта, а не использовать root.
+
+1. В левом меню: **Пользователи** → **Создать**
+2. Заполните форму:
+   - **Логин:** `taxi` (или любое имя)
+   - **Пароль:** придумайте надёжный пароль
+   - **Email:** ваш email
+3. В разделе **Права** убедитесь что включены:
+   - **Может использовать Node.js** — ДА
+   - **Может использовать Python** — ДА
+   - **Shell-доступ** — ДА
+4. Нажмите **Создать**
+
+> Файлы пользователя будут в папке `/var/www/taxi/data/`
+
+---
+
+## ISP Шаг 4: Создание сайта (домена)
+
+### 4.1 Если у вас есть домен:
+
+1. В левом меню: **Сайты** → **Создать сайт**
+2. Заполните:
+   - **Имя сайта (домен):** `вашдомен.ru`
+   - **Владелец:** выберите пользователя `taxi`
+   - **Обработчик:** **Статический** (мы будем сами настраивать прокси)
+3. Поставьте галочку **SSL-сертификат** (Let's Encrypt)
+4. Нажмите **Создать**
+
+### 4.2 Если домена нет (только IP):
+
+1. В **Сайты** → **Создать сайт**
+2. Введите IP-адрес вместо домена
+3. **Обработчик:** Статический
+4. Нажмите **Создать**
+
+### 4.3 Проверка
+
+В списке сайтов должен появиться ваш домен с зелёным статусом.
+
+Корневая папка сайта:
+```
+/var/www/taxi/data/www/вашдомен.ru/
+```
+
+---
+
+## ISP Шаг 5: SSL-сертификат через панель
+
+> SSL можно поставить только если DNS домена уже указывает на ваш сервер.
+
+### Через ISPmanager:
+
+1. В левом меню: **Сайты** → выберите ваш сайт
+2. Нажмите **«...»** (три точки) → **SSL-сертификаты**
+3. Нажмите **«Создать»**
+4. Выберите **Let's Encrypt**
+5. Укажите:
+   - **Домен:** `вашдомен.ru`
+   - **Алиасы:** `www.вашдомен.ru`
+6. Нажмите **Выпустить**
+
+Сертификат будет выпущен за 1-2 минуты. Панель автоматически настроит HTTPS и перенаправление с HTTP.
+
+### Проверка:
+
+Откройте `https://вашдомен.ru` — должен появиться замок в адресной строке.
+
+---
+
+## ISP Шаг 6: Установка MongoDB через Shell
+
+> ISPmanager не управляет MongoDB через интерфейс. MongoDB ставится через терминал.
+
+### 6.1 Откройте Shell-клиент
+
+1. В левом меню: **Инструменты** → **Shell-клиент**
+2. Или нажмите иконку терминала в правом верхнем углу
+3. Откроется терминал прямо в браузере (не нужен PuTTY!)
+
+### 6.2 Установите MongoDB
+
+Копируйте и вставляйте команды по одной:
+
+**Импорт ключа:**
+```bash
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+```
+
+**Добавление репозитория:**
+```bash
+echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+```
+
+**Установка:**
+```bash
+apt update && apt install -y mongodb-org
+```
+
+**Запуск и автозагрузка:**
+```bash
+systemctl start mongod
+systemctl enable mongod
+```
+
+**Проверка:**
+```bash
+systemctl status mongod
+```
+
+Должно показать **active (running)**.
+
+> **Если репозиторий не доступен (блокировка из РФ):**
+> Попробуйте добавить прокси:
+> ```bash
+> echo 'Acquire::http::Proxy "http://ваш_прокси:порт";' > /etc/apt/apt.conf.d/proxy.conf
+> apt update && apt install -y mongodb-org
+> rm /etc/apt/apt.conf.d/proxy.conf
+> ```
+> Или скачайте пакеты MongoDB вручную с [https://www.mongodb.com/try/download](https://www.mongodb.com/try/download)
+
+---
+
+## ISP Шаг 7: Загрузка файлов через файловый менеджер
+
+### Вариант А: Через файловый менеджер ISPmanager
+
+1. В левом меню: **Файловый менеджер**
+2. Перейдите в папку: `/var/www/taxi/data/`
+3. Создайте папку `taxi-app` (кнопка **«Создать»** → **«Папку»**)
+4. Зайдите в `taxi-app`
+5. Нажмите **«Загрузить»** (иконка стрелки вверх)
+6. Загрузите **архив** вашего проекта (ZIP)
+7. После загрузки: выделите архив → **«...»** → **«Извлечь»**
+
+Структура должна быть:
+```
+/var/www/taxi/data/taxi-app/
+├── backend/
+│   ├── server.py
+│   └── requirements.txt
+└── frontend/
+    ├── package.json
+    └── src/
+```
+
+### Вариант Б: Через Git в Shell-клиенте
+
+1. Откройте **Shell-клиент** (Инструменты → Shell-клиент)
+2. Выполните:
+
+```bash
+cd /var/www/taxi/data/
+git clone https://github.com/ВАШ_ЛОГИН/РЕПОЗИТОРИЙ.git taxi-app
+```
+
+### Вариант В: Через SFTP (FileZilla)
+
+1. Скачайте FileZilla: [https://filezilla-project.org/](https://filezilla-project.org/)
+2. Подключитесь:
+   - **Хост:** `sftp://185.104.XXX.XXX`
+   - **Логин:** `root`
+   - **Пароль:** пароль сервера
+   - **Порт:** `22`
+3. Перейдите на сервере в `/var/www/taxi/data/`
+4. Создайте папку `taxi-app`
+5. Перетащите папки `backend` и `frontend` в `taxi-app`
+
+---
+
+## ISP Шаг 8: Настройка бэкенда через Shell-клиент
+
+Откройте **Shell-клиент** и выполните команды:
+
+### 8.1 Создание виртуального окружения Python:
+
+```bash
+cd /var/www/taxi/data/taxi-app/backend
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 8.2 Установка зависимостей:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 8.3 Создание файла .env:
+
+Сначала сгенерируйте секретный ключ:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Скопируйте длинную строку. Теперь создайте файл:
+
+```bash
+nano /var/www/taxi/data/taxi-app/backend/.env
+```
+
+Вставьте (замените значения):
+
+```
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=taxi_production
+JWT_SECRET=ВСТАВЬТЕ_ДЛИННУЮ_СТРОКУ_СЮДА
+ADMIN_EMAIL=admin@вашдомен.ru
+ADMIN_PASSWORD=НадёжныйПароль123!
+CORS_ORIGINS=https://вашдомен.ru,https://www.вашдомен.ru
+```
+
+Сохраните: `Ctrl+X` → `Y` → `Enter`
+
+> **Также можно** создать файл через **Файловый менеджер**:
+> 1. Перейдите в `/var/www/taxi/data/taxi-app/backend/`
+> 2. **Создать** → **Файл** → имя `.env`
+> 3. Откройте его и вставьте содержимое выше
+
+### 8.4 Проверка запуска:
+
+```bash
+source /var/www/taxi/data/taxi-app/backend/venv/bin/activate
+cd /var/www/taxi/data/taxi-app/backend
+python3 -m uvicorn server:app --host 0.0.0.0 --port 8001
+```
+
+Если видите `Application startup complete.` — бэкенд работает. Нажмите `Ctrl+C`.
+
+### 8.5 Создание сервиса (автозапуск):
+
+```bash
+cat > /etc/systemd/system/taxi-backend.service << 'EOF'
+[Unit]
+Description=Taxi Ryadom Backend API
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/taxi/data/taxi-app/backend
+Environment=PATH=/var/www/taxi/data/taxi-app/backend/venv/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/var/www/taxi/data/taxi-app/backend/.env
+ExecStart=/var/www/taxi/data/taxi-app/backend/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001 --workers 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl start taxi-backend
+systemctl enable taxi-backend
+```
+
+Проверка:
+```bash
+systemctl status taxi-backend
+```
+
+Должно быть **active (running)**.
+
+---
+
+## ISP Шаг 9: Сборка фронтенда
+
+В **Shell-клиенте**:
+
+### 9.1 Создайте .env для фронтенда:
+
+```bash
+cat > /var/www/taxi/data/taxi-app/frontend/.env << 'EOF'
+REACT_APP_BACKEND_URL=https://вашдомен.ru
+EOF
+```
+
+### 9.2 Установите зависимости и соберите:
+
+```bash
+cd /var/www/taxi/data/taxi-app/frontend
+npm install -g yarn
+yarn install
+yarn build
+```
+
+> Это займёт 3-5 минут. Дождитесь сообщения `Compiled successfully.`
+
+### 9.3 Скопируйте сборку в папку сайта:
+
+```bash
+cp -r /var/www/taxi/data/taxi-app/frontend/build/* /var/www/taxi/data/www/вашдомен.ru/
+```
+
+> Замените `вашдомен.ru` на ваш реальный домен.
+
+---
+
+## ISP Шаг 10: Настройка Nginx-прокси
+
+Нужно настроить Nginx так, чтобы:
+- Запросы к `/api/` и `/ws/` проксировались на бэкенд (порт 8001)
+- Остальные запросы отдавали файлы React (index.html)
+
+### 10.1 Через ISPmanager (простой способ):
+
+1. В левом меню: **Домены** → **WWW-домены**
+2. Выберите ваш домен → **Изменить** (иконка карандаша)
+3. Найдите раздел **«Дополнительные директивы Nginx»** или **«Кастомный конфиг»**
+4. Вставьте:
+
+```nginx
+# API проксирование на бэкенд
+location /api/ {
+    proxy_pass http://127.0.0.1:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 60s;
+    proxy_read_timeout 60s;
+}
+
+# WebSocket для real-time отслеживания водителя
+location /ws/ {
+    proxy_pass http://127.0.0.1:8001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 86400;
+}
+
+# React SPA — все остальные запросы
+location / {
+    try_files $uri $uri/ /index.html;
+}
+```
+
+5. Нажмите **Сохранить**
+
+### 10.2 Через терминал (если нет поля доп. директив):
+
+Откройте **Shell-клиент** и выполните:
+
+```bash
+# Найдите конфиг вашего сайта
+ls /etc/nginx/sites-available/
+```
+
+Обычно файл называется `вашдомен.ru.conf`. Отредактируйте его:
+
+```bash
+nano /etc/nginx/sites-available/вашдомен.ru.conf
+```
+
+Внутри блока `server { }` добавьте (перед последней `}` ):
+
+```nginx
+    # API проксирование на бэкенд
+    location /api/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # WebSocket для real-time отслеживания водителя
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 86400;
+    }
+
+    # React SPA — все остальные запросы
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Сжатие
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
+
+    client_max_body_size 10M;
+```
+
+Сохраните и перезапустите:
+```bash
+nginx -t
+systemctl restart nginx
+```
+
+### 10.3 Важно!
+
+Если ISPmanager перезаписывает ваш конфиг при изменении через панель, используйте **шаблоны конфигов**:
+
+```bash
+# Создайте файл дополнительного конфига
+nano /etc/nginx/conf.d/taxi-proxy.conf
+```
+
+Вставьте и сохраните. Этот файл ISPmanager не тронет.
+
+---
+
+## ISP Шаг 11: Настройка файрвола в панели
+
+### Через ISPmanager:
+
+1. В левом меню: **Настройки** → **Firewall**
+2. Нажмите **«Создать»** (или найдите правило)
+3. Добавьте правила:
+
+| Порт | Протокол | Действие | Описание |
+|------|----------|----------|----------|
+| 22 | TCP | Разрешить | SSH доступ |
+| 80 | TCP | Разрешить | HTTP |
+| 443 | TCP | Разрешить | HTTPS |
+| 1500 | TCP | Разрешить | ISPmanager панель |
+
+4. Нажмите **Применить**
+
+> **Не открывайте** порт 27017 (MongoDB) наружу! Он должен быть доступен только локально (127.0.0.1).
+
+> **Не открывайте** порт 8001 (бэкенд) наружу! Он доступен через Nginx прокси.
+
+---
+
+## ISP Шаг 12: Проверка и запуск
+
+### 12.1 Проверьте сервисы
+
+В **Shell-клиенте**:
+
+```bash
+# MongoDB
+systemctl status mongod
+
+# Бэкенд
+systemctl status taxi-backend
+
+# Nginx
+systemctl status nginx
+```
+
+Все три должны быть **active (running)**.
+
+### 12.2 Проверьте API
+
+```bash
+curl -s http://localhost:8001/api/settings/public | python3 -m json.tool
+```
+
+Должен вернуть JSON с `app_name` и другими настройками.
+
+### 12.3 Проверьте сайт
+
+Откройте в браузере:
+
+| URL | Что должно быть |
+|-----|-----------------|
+| `https://вашдомен.ru` | Страница выбора роли с логотипом |
+| `https://вашдомен.ru/api/settings/public` | JSON с настройками |
+| `https://вашдомен.ru/admin/login` | Форма входа администратора |
+
+### 12.4 Первый вход
+
+1. Откройте `https://вашдомен.ru`
+2. Нажмите **«Заказчик»**
+3. Введите любой телефон, примите условия
+4. Введите тестовый код **1234**
+5. Придумайте PIN-код
+6. Готово!
+
+### 12.5 Вход в админ-панель
+
+1. Откройте `https://вашдомен.ru/admin/login`
+2. Email: значение `ADMIN_EMAIL` из .env бэкенда
+3. Пароль: значение `ADMIN_PASSWORD` из .env бэкенда
+
+---
+
+## ISP: Обновление сайта
+
+### Через Shell-клиент ISPmanager:
+
+```bash
+# Если через Git:
+cd /var/www/taxi/data/taxi-app
+git pull origin main
+
+# Обновить бэкенд
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+systemctl restart taxi-backend
+
+# Обновить фронтенд
+cd ../frontend
+yarn install
+yarn build
+
+# Скопировать сборку
+cp -r build/* /var/www/taxi/data/www/вашдомен.ru/
+
+# Перезапустить Nginx
+systemctl restart nginx
+```
+
+### Через файловый менеджер:
+
+1. Загрузите новые файлы в `/var/www/taxi/data/taxi-app/`
+2. Откройте **Shell-клиент** и выполните:
+   ```bash
+   cd /var/www/taxi/data/taxi-app/backend
+   source venv/bin/activate && pip install -r requirements.txt
+   systemctl restart taxi-backend
+   
+   cd ../frontend
+   yarn install && yarn build
+   cp -r build/* /var/www/taxi/data/www/вашдомен.ru/
+   systemctl restart nginx
+   ```
+
+---
+
+## ISP: Решение проблем
+
+### Панель ISPmanager не открывается
+
+```bash
+# Через SSH (PuTTY):
+systemctl status ispmgr
+systemctl restart ispmgr
+```
+
+Панель работает на порту **1500**. Проверьте что он открыт в файрволе.
+
+### ISPmanager перезаписывает конфиг Nginx
+
+ISPmanager управляет конфигами сайтов. Если вы редактируете конфиг вручную, панель может его перезаписать при изменениях через интерфейс.
+
+**Решение:** Используйте поле **«Дополнительные директивы Nginx»** в настройках домена или создайте отдельный файл:
+
+```bash
+nano /etc/nginx/conf.d/taxi-proxy.conf
+```
+
+Этот файл подключается автоматически и ISPmanager его не тронет.
+
+### Сайт не открывается (ошибка 403)
+
+Проверьте права на файлы:
+```bash
+chown -R taxi:taxi /var/www/taxi/data/www/вашдомен.ru/
+chmod -R 755 /var/www/taxi/data/www/вашдомен.ru/
+```
+
+### Ошибка 502 Bad Gateway
+
+Бэкенд не запущен:
+```bash
+systemctl status taxi-backend
+journalctl -u taxi-backend -n 30 --no-pager
+systemctl restart taxi-backend
+```
+
+### WebSocket не работает
+
+Убедитесь что в Nginx конфиге есть блок `/ws/` с заголовками `Upgrade`. Перезапустите Nginx:
+```bash
+nginx -t && systemctl restart nginx
+```
+
+### SSL-сертификат не выпускается
+
+1. Проверьте что DNS домена указывает на ваш IP:
+   ```bash
+   dig вашдомен.ru +short
+   ```
+2. Порты 80 и 443 должны быть открыты
+3. Попробуйте выпустить вручную:
+   ```bash
+   certbot --nginx -d вашдомен.ru -d www.вашдомен.ru
+   ```
+
+---
+
+## ISP: Полезные места в панели
+
+| Раздел | Где найти | Для чего |
+|--------|-----------|----------|
+| Shell-клиент | Инструменты → Shell-клиент | Терминал в браузере |
+| Файловый менеджер | Левое меню → Файловый менеджер | Загрузка/редактирование файлов |
+| Конфигурация ПО | Настройки → Конфигурация ПО | Установка Nginx, Node.js, Python |
+| Firewall | Настройки → Firewall | Открытие/закрытие портов |
+| SSL-сертификаты | Сайты → (ваш сайт) → SSL | Выпуск HTTPS сертификата |
+| Логи | Логи → Логи веб-сервера | Просмотр ошибок Nginx |
+| Домены | Домены → WWW-домены | Настройка доменов и Nginx |
+| Пользователи | Пользователи | Создание пользователей |
+
+---
+
+## ISP: Сводка путей
+
+| Что | Путь на сервере |
+|-----|----------------|
+| Проект | `/var/www/taxi/data/taxi-app/` |
+| Бэкенд | `/var/www/taxi/data/taxi-app/backend/` |
+| Фронтенд | `/var/www/taxi/data/taxi-app/frontend/` |
+| Сборка (build) | `/var/www/taxi/data/www/вашдомен.ru/` |
+| Конфиг Nginx | `/etc/nginx/sites-available/вашдомен.ru.conf` |
+| Конфиг MongoDB | `/etc/mongod.conf` |
+| Логи бэкенда | `journalctl -u taxi-backend -f` |
+| Логи Nginx | `/var/log/nginx/error.log` |
+| Панель ISPmanager | `https://ВАШ_IP:1500` |
+
+---
+
+> **Готово!** Ваш такси-сервис «Рядом» установлен через ISPmanager и работает.
