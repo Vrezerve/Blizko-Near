@@ -39,6 +39,7 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets
 ### Деплой
 - [x] Подробный гайд Timeweb — терминал (/app/docs/timeweb_guide.md)
 - [x] Подробный гайд Timeweb — ISPmanager 6 (12 шагов + решение проблем)
+- [x] Автоинсталятор install.sh (проверка/установка зависимостей, настройка, сборка)
 
 ## Бэклог
 ### P1
