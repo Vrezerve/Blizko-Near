@@ -208,7 +208,7 @@ const DriverAuth = () => {
                   type="tel"
                   value={phone || '+7'}
                   onChange={handlePhoneChange}
-                  className="input-field pl-12"
+                  className="input-field !pl-14"
                   placeholder="+7 (___) ___-__-__"
                 />
               </div>
@@ -245,7 +245,7 @@ const DriverAuth = () => {
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="input-field pl-12"
+                    className="input-field !pl-14"
                     placeholder="Иванов Иван Иванович"
                   />
                 </div>
@@ -260,7 +260,7 @@ const DriverAuth = () => {
                     type="text"
                     value={carModel}
                     onChange={(e) => setCarModel(e.target.value)}
-                    className="input-field pl-12"
+                    className="input-field !pl-14"
                     placeholder="Toyota Camry"
                   />
                 </div>

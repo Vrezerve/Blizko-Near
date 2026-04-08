@@ -64,7 +64,7 @@ const AdminLogin = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="input-field pl-12"
+                  className="input-field !pl-14"
                   placeholder="admin@taxi.local"
                 />
               </div>
@@ -79,7 +79,7 @@ const AdminLogin = () => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input-field pl-12"
+                  className="input-field !pl-14"
                   placeholder="••••••••"
                 />
               </div>

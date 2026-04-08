@@ -172,7 +172,7 @@ const CustomerAuth = () => {
                       type="tel"
                       value={phone || '+7'}
                       onChange={handlePhoneChange}
-                      className="input-field pl-12"
+                      className="input-field !pl-14"
                       placeholder="+7 (___) ___-__-__"
                     />
                   </div>

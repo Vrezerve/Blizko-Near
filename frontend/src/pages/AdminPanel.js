@@ -5,7 +5,8 @@ import {
   Users, Car, ClipboardList, Settings, Bell, BarChart3, 
   LogOut, Search, Check, X, Edit2, Loader2, Eye, 
   ChevronRight, AlertTriangle, MessageSquare, Key, Map,
-  MapPin, Navigation, Phone, Clock, Smartphone, Ban, Unlock
+  MapPin, Navigation, Phone, Clock, Smartphone, Ban, Unlock,
+  Upload, Image
 } from 'lucide-react';
 
 // Admin Map Component showing online drivers
@@ -220,6 +221,7 @@ const AdminPanel = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [selectedOrderRoute, setSelectedOrderRoute] = useState(null);
+  const [iconUploading, setIconUploading] = useState(false);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -342,6 +344,42 @@ const AdminPanel = () => {
       alert('Настройки сохранены');
     } catch (error) {
       console.error('Failed to save settings');
+    }
+  };
+
+  const handleIconUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('Максимальный размер файла: 2 МБ');
+      return;
+    }
+    
+    setIconUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/upload-icon`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setSettings(prev => ({ ...prev, app_icon_url: data.url }));
+        alert('Иконка загружена');
+      } else {
+        alert(data.detail || 'Ошибка загрузки');
+      }
+    } catch (error) {
+      alert('Ошибка загрузки иконки');
+    } finally {
+      setIconUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -855,16 +893,47 @@ const AdminPanel = () => {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">URL иконки приложения</label>
-            <input
-              data-testid="settings-app-icon"
-              type="text"
-              value={settings.app_icon_url || ''}
-              onChange={(e) => setSettings({...settings, app_icon_url: e.target.value})}
-              className="input-field"
-              placeholder="https://example.com/icon.png"
-            />
-            <p className="text-xs text-slate-400 mt-1">Оставьте пустым для иконки по умолчанию</p>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Иконка приложения</label>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+                {settings.app_icon_url ? (
+                  <img 
+                    src={settings.app_icon_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${settings.app_icon_url}` : settings.app_icon_url} 
+                    alt="" 
+                    className="w-12 h-12 object-cover" 
+                    onError={(e) => { e.target.style.display='none'; }} 
+                  />
+                ) : (
+                  <Car className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <label 
+                data-testid="settings-app-icon-upload"
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-slate-200 hover:border-green-400 cursor-pointer transition-colors text-sm ${iconUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {iconUploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-green-600" />
+                ) : (
+                  <Upload className="w-4 h-4 text-slate-500" />
+                )}
+                <span className="text-slate-600">{iconUploading ? 'Загрузка...' : 'Загрузить иконку'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                  onChange={handleIconUpload}
+                  className="hidden"
+                />
+              </label>
+              {settings.app_icon_url && (
+                <button
+                  onClick={() => setSettings({...settings, app_icon_url: ''})}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Удалить
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-2">PNG, JPEG, WebP, SVG. Макс. 2 МБ</p>
           </div>
         </div>
         
@@ -874,7 +943,11 @@ const AdminPanel = () => {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center overflow-hidden">
               {settings.app_icon_url ? (
-                <img src={settings.app_icon_url} alt="" className="w-10 h-10 object-cover" onError={(e) => { e.target.style.display='none'; }} />
+                <img 
+                  src={settings.app_icon_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${settings.app_icon_url}` : settings.app_icon_url} 
+                  alt="" className="w-10 h-10 object-cover" 
+                  onError={(e) => { e.target.style.display='none'; }} 
+                />
               ) : (
                 <Car className="w-5 h-5 text-white" />
               )}

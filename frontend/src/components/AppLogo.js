@@ -39,11 +39,15 @@ export const AppLogo = ({ size = 'md', className = '' }) => {
 
   const s = sizes[size] || sizes.md;
 
+  const iconSrc = app_icon_url
+    ? app_icon_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${app_icon_url}` : app_icon_url
+    : '';
+
   return (
     <div className={`flex items-center gap-2 ${className}`} data-testid="app-logo">
       <div className={`${s.box} bg-green-600 rounded-xl flex items-center justify-center overflow-hidden`}>
-        {app_icon_url && !imgError ? (
-          <img src={app_icon_url} alt="" className={`${s.box} object-cover`} onError={() => setImgError(true)} />
+        {iconSrc && !imgError ? (
+          <img src={iconSrc} alt="" className={`${s.box} object-cover`} onError={() => setImgError(true)} />
         ) : (
           <Car className={`${s.icon} text-white`} />
         )}

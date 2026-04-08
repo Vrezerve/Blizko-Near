@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect, UploadFile, File
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -17,7 +17,12 @@ import secrets
 import json
 import asyncio
 
+from fastapi.staticfiles import StaticFiles
+import shutil
+
 ROOT_DIR = Path(__file__).parent
+UPLOADS_DIR = ROOT_DIR / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -30,6 +35,9 @@ JWT_ALGORITHM = "HS256"
 
 # Create the main app
 app = FastAPI(title="Taxi WebToApp API")
+
+# Serve uploaded files
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Create routers
 api_router = APIRouter(prefix="/api")
@@ -1364,6 +1372,38 @@ async def update_message_template(data: MessageTemplate, user: dict = Depends(ge
         upsert=True
     )
     return {"success": True}
+
+@settings_router.post("/upload-icon")
+async def upload_app_icon(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload app icon image"""
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP, SVG, GIF")
+    
+    if file.size and file.size > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 2 МБ")
+    
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    filename = f"app_icon_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    # Build the URL
+    icon_url = f"/api/uploads/{filename}"
+    
+    # Save to settings
+    await db.settings.update_one(
+        {"id": "main"},
+        {"$set": {"app_icon_url": icon_url}},
+        upsert=True
+    )
+    
+    await log_action("app_icon_updated", user["id"], {"filename": filename})
+    
+    return {"success": True, "url": icon_url}
 
 # ============ WEBSOCKET ============
 

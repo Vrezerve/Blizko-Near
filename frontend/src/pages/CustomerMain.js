@@ -674,7 +674,7 @@ const CustomerMain = () => {
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="input-field pl-12"
+                    className="input-field !pl-14"
                     placeholder="Город, улица"
                   />
                 </div>

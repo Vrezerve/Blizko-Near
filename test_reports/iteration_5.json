@@ -1,0 +1,129 @@
+{
+  "summary": "Iteration 6 - Bug fixes testing complete. All 3 reported issues have been fixed and verified: (1) Icon file upload works, (2) Driver go-online button enabled when checkbox checked, (3) Input icon spacing fixed with pl-14. Backend: 14/14 tests passed. Frontend: All UI tests passed.",
+  
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  
+  "passed_tests": {
+    "backend_icon_upload": [
+      "POST /api/settings/upload-icon with PNG file returns success and URL",
+      "Uploaded file is servable at /api/uploads/{filename} (HTTP 200)",
+      "Upload endpoint requires authentication (401 without token)",
+      "Upload rejects invalid file formats (400 for non-images)"
+    ],
+    "backend_driver_toggle_ready": [
+      "POST /api/drivers/toggle-ready returns is_online status",
+      "Toggle-ready actually toggles the online status",
+      "Toggle-ready requires authentication",
+      "Toggle-ready requires driver role (403 for customers)"
+    ],
+    "backend_public_settings": [
+      "GET /api/settings/public returns app_name",
+      "GET /api/settings/public returns app_icon_url"
+    ],
+    "backend_admin_settings": [
+      "Admin can change app_name via POST /api/settings/"
+    ],
+    "backend_auth_flows": [
+      "Customer auth flow with test code 1234 works",
+      "Driver auth flow with test code 1234 works",
+      "Admin login with admin@taxi.local / admin123 works"
+    ],
+    "frontend_icon_upload": [
+      "Admin Settings tab shows 'Загрузить иконку' button (data-testid='settings-app-icon-upload')",
+      "No URL text input for icon (replaced with upload button)",
+      "App name input field present (data-testid='settings-app-name')",
+      "Preview section shows uploaded icon"
+    ],
+    "frontend_driver_go_online": [
+      "Toggle ready button found (data-testid='toggle-ready-btn')",
+      "Button is disabled when rules checkbox unchecked",
+      "Button is ENABLED after checking rules checkbox",
+      "No balance requirement blocking the button"
+    ],
+    "frontend_input_spacing": [
+      "Customer phone input padding-left: 56px (pl-14) - SUCCESS",
+      "Driver phone input padding-left: 56px (pl-14) - SUCCESS",
+      "Driver name input padding-left: 56px (pl-14) - SUCCESS",
+      "Driver car input padding-left: 56px (pl-14) - SUCCESS",
+      "Admin email input padding-left: 56px (pl-14) - SUCCESS",
+      "Admin password input padding-left: 56px (pl-14) - SUCCESS"
+    ],
+    "frontend_auth_flows": [
+      "Customer auth with test code 1234 redirects to /customer",
+      "Driver auth with test code 1234 redirects to /driver"
+    ]
+  },
+  
+  "test_report_links": [
+    "/app/backend/tests/test_bug_fixes.py",
+    "/app/test_reports/pytest/bug_fixes_results.xml"
+  ],
+  
+  "action_items": [],
+  
+  "critical_code_review_comments": [
+    "Icon upload endpoint properly validates file types and size (max 2MB)",
+    "Uploaded files stored in /app/backend/uploads/ and served via /api/uploads/ static mount",
+    "Driver toggle-ready no longer checks balance on frontend - only requires agreedRules checkbox",
+    "Input spacing fixed by using !pl-14 with important flag and splitting padding properties in CSS"
+  ],
+  
+  "updated_files": [
+    "/app/backend/tests/test_bug_fixes.py"
+  ],
+  
+  "success_rate": {
+    "backend": "100% (14/14 tests passed)",
+    "frontend": "100% (all UI tests passed)"
+  },
+  
+  "test_credentials": {
+    "admin": "admin@taxi.local / admin123",
+    "test_customer": "+79009999999, code: 1234",
+    "test_driver": "+79999999999, code: 1234 (activated)"
+  },
+  
+  "seed_data_creation": "No new seed data created - used existing test users",
+  
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  
+  "context_for_next_testing_agent": "All 3 bug fixes verified: (1) Icon upload replaces URL input in admin settings, (2) Driver go-online button works when rules checkbox checked (no balance check on frontend), (3) Input icons have proper 56px left padding. SMS/Push notifications remain MOCKED - test code 1234 always accepted.",
+  
+  "mocked_apis": {
+    "SMS_notifications": "MOCKED - test code 1234 always accepted",
+    "Push_notifications": "MOCKED - stored in MongoDB notifications collection",
+    "SMTP_email": "MOCKED - stored in MongoDB notifications collection"
+  },
+  
+  "bug_fixes_verified": {
+    "icon_file_upload": {
+      "status": "FIXED",
+      "description": "Admin panel Settings tab now shows 'Загрузить иконку' button instead of URL text input",
+      "backend_endpoint": "POST /api/settings/upload-icon",
+      "files_stored_at": "/app/backend/uploads/",
+      "served_via": "/api/uploads/{filename}"
+    },
+    "driver_go_online_button": {
+      "status": "FIXED",
+      "description": "Driver 'Выйти на линию' button is enabled when rules checkbox is checked (no balance requirement on frontend)",
+      "backend_endpoint": "POST /api/drivers/toggle-ready",
+      "condition": "agreedRules checkbox must be checked"
+    },
+    "input_icon_spacing": {
+      "status": "FIXED",
+      "description": "All input fields with icons now have proper 56px (pl-14) left padding",
+      "css_fix": "Changed from padding shorthand to individual padding-top/bottom/right/left properties with !pl-14 Tailwind class",
+      "affected_pages": ["CustomerAuth", "DriverAuth", "AdminLogin"]
+    }
+  }
+}

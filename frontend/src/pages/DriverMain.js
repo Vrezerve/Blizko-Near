@@ -418,10 +418,10 @@ const DriverMain = () => {
             </div>
           </div>
 
-          {user?.balance <= 0 && !user?.is_reliable && (
-            <div className="bg-red-50 rounded-xl p-4 text-center">
-              <p className="text-red-600 font-medium">Недостаточно баланса</p>
-              <p className="text-red-500 text-sm">Пополните баланс для принятия заказов</p>
+          {user?.balance <= 0 && (
+            <div className="bg-amber-50 rounded-xl p-4 text-center">
+              <p className="text-amber-700 font-medium text-sm">Баланс пуст</p>
+              <p className="text-amber-500 text-xs">Обратитесь к администратору для пополнения</p>
             </div>
           )}
 
@@ -446,7 +446,7 @@ const DriverMain = () => {
           <button
             data-testid="toggle-ready-btn"
             onClick={handleToggleReady}
-            disabled={loading || !agreedRules || (user?.balance <= 0 && !user?.is_reliable)}
+            disabled={loading || !agreedRules}
             className="btn-primary"
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
