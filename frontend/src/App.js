@@ -10,6 +10,8 @@ import CustomerMain from './pages/CustomerMain';
 import DriverMain from './pages/DriverMain';
 import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
+import PinScreen from './pages/PinScreen';
+import PinSetup from './pages/PinSetup';
 
 import './App.css';
 
@@ -41,6 +43,8 @@ function AppRoutes() {
       <Route path="/" element={<RoleSelect />} />
       <Route path="/auth/customer" element={<CustomerAuth />} />
       <Route path="/auth/driver" element={<DriverAuth />} />
+      <Route path="/auth/pin" element={<PinScreen />} />
+      <Route path="/auth/pin-setup" element={<PinSetup />} />
       <Route path="/admin/login" element={<AdminLogin />} />
       
       <Route

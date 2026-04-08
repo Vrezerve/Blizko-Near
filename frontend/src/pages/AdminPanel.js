@@ -5,7 +5,7 @@ import {
   Users, Car, ClipboardList, Settings, Bell, BarChart3, 
   LogOut, Search, Check, X, Edit2, Loader2, Eye, 
   ChevronRight, AlertTriangle, MessageSquare, Key, Map,
-  MapPin, Navigation, Phone, Clock
+  MapPin, Navigation, Phone, Clock, Smartphone, Ban, Unlock
 } from 'lucide-react';
 
 // Admin Map Component showing online drivers
@@ -212,6 +212,7 @@ const AdminPanel = () => {
   const [notifications, setNotifications] = useState([]);
   const [settings, setSettings] = useState({});
   const [onlineDrivers, setOnlineDrivers] = useState([]);
+  const [blockedDevices, setBlockedDevices] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [userFilter, setUserFilter] = useState('all');
   const [orderFilter, setOrderFilter] = useState('all');
@@ -269,6 +270,10 @@ const AdminPanel = () => {
           const settingsData = await api('GET', '/settings/');
           setSettings(settingsData);
           break;
+        case 'devices':
+          const devicesData = await api('GET', '/admin/blocked-devices');
+          setBlockedDevices(devicesData);
+          break;
         default:
           break;
       }
@@ -294,6 +299,15 @@ const AdminPanel = () => {
       loadData();
     } catch (error) {
       console.error('Failed to deactivate driver');
+    }
+  };
+
+  const handleUnblockDevice = async (deviceId) => {
+    try {
+      await api('POST', `/admin/unblock-device/${deviceId}`);
+      loadData();
+    } catch (error) {
+      console.error('Failed to unblock device');
     }
   };
 
@@ -1059,12 +1073,85 @@ const AdminPanel = () => {
     </div>
   );
 
+  const renderBlockedDevices = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-slate-900">Заблокированные устройства</h2>
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Ban className="w-4 h-4" />
+          <span>{blockedDevices.filter(d => d.is_blocked).length} заблокировано</span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-slate-50 border-b border-slate-100">
+            <tr>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">ID устройства</th>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">Причина</th>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">Статус</th>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">Заблокировано</th>
+              <th className="text-right p-4 text-sm font-medium text-slate-600">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {blockedDevices.map((device) => (
+              <tr key={device.device_id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-4">
+                  <span className="font-mono text-sm text-slate-900">{device.device_id.slice(0, 16)}...</span>
+                </td>
+                <td className="p-4 text-sm text-slate-600">{device.reason || '—'}</td>
+                <td className="p-4">
+                  {device.is_blocked ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                      <Ban className="w-3 h-3" />
+                      Заблокировано
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                      <Check className="w-3 h-3" />
+                      Разблокировано
+                    </span>
+                  )}
+                </td>
+                <td className="p-4 text-sm text-slate-500">
+                  {device.blocked_at ? new Date(device.blocked_at).toLocaleString('ru-RU') : '—'}
+                </td>
+                <td className="p-4">
+                  <div className="flex items-center justify-end gap-2">
+                    {device.is_blocked && (
+                      <button
+                        onClick={() => handleUnblockDevice(device.device_id)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm hover:bg-green-200"
+                      >
+                        <Unlock className="w-4 h-4" />
+                        Разблокировать
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        
+        {blockedDevices.length === 0 && (
+          <div className="p-8 text-center text-slate-500">
+            <Smartphone className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+            <p>Нет заблокированных устройств</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const navItems = [
     { id: 'dashboard', icon: BarChart3, label: 'Обзор' },
     { id: 'map', icon: Map, label: 'Карта' },
     { id: 'customers', icon: Users, label: 'Пассажиры' },
     { id: 'drivers', icon: Car, label: 'Водители' },
     { id: 'orders', icon: ClipboardList, label: 'Заказы' },
+    { id: 'devices', icon: Smartphone, label: 'Устройства' },
     { id: 'logs', icon: MessageSquare, label: 'Логи' },
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
@@ -1124,6 +1211,7 @@ const AdminPanel = () => {
               {activeTab === 'customers' && renderUsers('customer')}
               {activeTab === 'drivers' && renderUsers('driver')}
               {activeTab === 'orders' && renderOrders()}
+              {activeTab === 'devices' && renderBlockedDevices()}
               {activeTab === 'logs' && renderLogs()}
               {activeTab === 'notifications' && renderNotifications()}
               {activeTab === 'settings' && renderSettings()}

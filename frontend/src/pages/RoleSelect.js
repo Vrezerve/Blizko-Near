@@ -32,6 +32,14 @@ const RoleSelect = () => {
       } else if (user.role === 'driver') {
         navigate('/driver');
       }
+    } else if (!loading && !user) {
+      // Check if user has PIN set (returning user)
+      const hasPin = localStorage.getItem('taxi_has_pin');
+      const pinPhone = localStorage.getItem('taxi_pin_phone');
+      const pinRole = localStorage.getItem('taxi_pin_role');
+      if (hasPin && pinPhone && pinRole) {
+        navigate('/auth/pin');
+      }
     }
   }, [user, loading, navigate]);
 

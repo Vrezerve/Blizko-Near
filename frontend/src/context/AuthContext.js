@@ -1,9 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const AuthContext = createContext(null);
+
+// Generate or get persistent device ID
+const getDeviceId = () => {
+  let deviceId = localStorage.getItem('taxi_device_id');
+  if (!deviceId) {
+    deviceId = uuidv4();
+    localStorage.setItem('taxi_device_id', deviceId);
+  }
+  return deviceId;
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -17,11 +28,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('taxi_token'));
-
-  const axiosInstance = axios.create({
-    baseURL: API,
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
-  });
+  const [deviceId] = useState(getDeviceId());
 
   const checkAuth = useCallback(async () => {
     const storedToken = localStorage.getItem('taxi_token');
@@ -51,22 +58,93 @@ export const AuthProvider = ({ children }) => {
   }, [checkAuth]);
 
   const sendCode = async (phone, role) => {
-    const response = await axios.post(`${API}/auth/send-code`, { phone, role });
+    const response = await axios.post(`${API}/auth/send-code`, { 
+      phone, 
+      role,
+      device_id: deviceId 
+    });
     return response.data;
   };
 
   const verifyCode = async (phone, code, role) => {
-    const response = await axios.post(`${API}/auth/verify-code`, { phone, code, role });
+    const response = await axios.post(`${API}/auth/verify-code`, { 
+      phone, 
+      code, 
+      role,
+      device_id: deviceId 
+    });
+    const { token: newToken, user: userData, has_pin } = response.data;
+    localStorage.setItem('taxi_token', newToken);
+    localStorage.setItem('taxi_role', role);
+    if (has_pin) {
+      localStorage.setItem('taxi_has_pin', 'true');
+      localStorage.setItem('taxi_pin_phone', phone);
+      localStorage.setItem('taxi_pin_role', role);
+    }
+    setToken(newToken);
+    setUser(userData);
+    return { user: userData, has_pin };
+  };
+
+  const setPin = async (pin) => {
+    const response = await axios.post(`${API}/auth/set-pin`, { pin }, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    localStorage.setItem('taxi_has_pin', 'true');
+    if (user) {
+      localStorage.setItem('taxi_pin_phone', user.phone);
+      localStorage.setItem('taxi_pin_role', user.role);
+    }
+    return response.data;
+  };
+
+  const loginWithPin = async (phone, pin, role) => {
+    const response = await axios.post(`${API}/auth/login-pin`, {
+      phone, pin, role, device_id: deviceId
+    });
     const { token: newToken, user: userData } = response.data;
     localStorage.setItem('taxi_token', newToken);
     localStorage.setItem('taxi_role', role);
+    localStorage.setItem('taxi_has_pin', 'true');
+    localStorage.setItem('taxi_pin_phone', phone);
+    localStorage.setItem('taxi_pin_role', role);
+    setToken(newToken);
+    setUser(userData);
+    return userData;
+  };
+
+  const checkHasPin = async (phone, role) => {
+    const response = await axios.get(`${API}/auth/check-pin/${encodeURIComponent(phone)}/${role}`);
+    return response.data;
+  };
+
+  const resetPinRequest = async (phone, role) => {
+    const response = await axios.post(`${API}/auth/reset-pin-request`, {
+      phone, role, device_id: deviceId
+    });
+    return response.data;
+  };
+
+  const resetPinVerify = async (phone, code, role, newPin) => {
+    const response = await axios.post(`${API}/auth/reset-pin-verify`, {
+      phone, code, role, device_id: deviceId, new_pin: newPin
+    });
+    const { token: newToken, user: userData } = response.data;
+    localStorage.setItem('taxi_token', newToken);
+    localStorage.setItem('taxi_role', role);
+    localStorage.setItem('taxi_has_pin', 'true');
+    localStorage.setItem('taxi_pin_phone', phone);
+    localStorage.setItem('taxi_pin_role', role);
     setToken(newToken);
     setUser(userData);
     return userData;
   };
 
   const registerDriver = async (data) => {
-    const response = await axios.post(`${API}/auth/register-driver`, data);
+    const response = await axios.post(`${API}/auth/register-driver`, {
+      ...data,
+      device_id: deviceId
+    });
     return response.data;
   };
 
@@ -88,6 +166,9 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     localStorage.removeItem('taxi_token');
     localStorage.removeItem('taxi_role');
+    localStorage.removeItem('taxi_has_pin');
+    localStorage.removeItem('taxi_pin_phone');
+    localStorage.removeItem('taxi_pin_role');
     setToken(null);
     setUser(null);
   };
@@ -110,8 +191,14 @@ export const AuthProvider = ({ children }) => {
       user,
       loading,
       token,
+      deviceId,
       sendCode,
       verifyCode,
+      setPin,
+      loginWithPin,
+      checkHasPin,
+      resetPinRequest,
+      resetPinVerify,
       registerDriver,
       checkDriverStatus,
       adminLogin,

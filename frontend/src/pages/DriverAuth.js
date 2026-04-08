@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Phone, Loader2, Check, Car, User, X, Clock } from 'lucide-react';
+import { ArrowLeft, Phone, Loader2, Check, Car, User, X, Clock, Ban } from 'lucide-react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
@@ -10,7 +10,7 @@ const DriverAuth = () => {
   const navigate = useNavigate();
   const { sendCode, verifyCode, registerDriver, checkDriverStatus, user } = useAuth();
   
-  const [step, setStep] = useState('phone'); // phone, code, register, awaiting
+  const [step, setStep] = useState('phone'); // phone, code, register, awaiting, blocked
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -86,7 +86,13 @@ const DriverAuth = () => {
         setStep('code');
       }
     } catch (error) {
-      setError(error.response?.data?.detail || 'Ошибка проверки');
+      const detail = error.response?.data?.detail || 'Ошибка проверки';
+      if (detail.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
+      } else {
+        setError(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -117,7 +123,13 @@ const DriverAuth = () => {
       });
       setStep('awaiting');
     } catch (error) {
-      setError(error.response?.data?.detail || 'Ошибка регистрации');
+      const detail = error.response?.data?.detail || 'Ошибка регистрации';
+      if (detail.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
+      } else {
+        setError(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -133,12 +145,19 @@ const DriverAuth = () => {
     setError('');
 
     try {
-      await verifyCode(getCleanPhone(), code, 'driver');
-      navigate('/driver');
+      const result = await verifyCode(getCleanPhone(), code, 'driver');
+      if (!result.has_pin) {
+        navigate('/auth/pin-setup');
+      } else {
+        navigate('/driver');
+      }
     } catch (error) {
       const detail = error.response?.data?.detail;
       if (detail === 'AWAITING_ACTIVATION') {
         setStep('awaiting');
+      } else if (detail?.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
       } else {
         setError(detail || 'Неверный код');
       }
@@ -149,6 +168,25 @@ const DriverAuth = () => {
 
   const renderStep = () => {
     switch (step) {
+      case 'blocked':
+        return (
+          <div className="space-y-6 text-center py-8">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+              <Ban className="w-10 h-10 text-red-600" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Устройство заблокировано</h2>
+              <p className="text-slate-500">{error || 'Обратитесь к администратору для разблокировки'}</p>
+            </div>
+            <button
+              onClick={() => navigate('/')}
+              className="btn-secondary"
+            >
+              На главную
+            </button>
+          </div>
+        );
+
       case 'phone':
         return (
           <div className="space-y-6">

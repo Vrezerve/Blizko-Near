@@ -10,7 +10,7 @@ const CustomerAuth = () => {
   const navigate = useNavigate();
   const { sendCode, verifyCode, user } = useAuth();
   
-  const [step, setStep] = useState('phone');
+  const [step, setStep] = useState('phone'); // phone, code, blocked
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -77,7 +77,13 @@ const CustomerAuth = () => {
       await sendCode(cleanPhone, 'customer');
       setStep('code');
     } catch (error) {
-      setError(error.response?.data?.detail || 'Ошибка отправки кода');
+      const detail = error.response?.data?.detail || 'Ошибка отправки кода';
+      if (detail.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
+      } else {
+        setError(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -93,10 +99,21 @@ const CustomerAuth = () => {
     setError('');
 
     try {
-      await verifyCode(getCleanPhone(), code, 'customer');
-      navigate('/customer');
+      const result = await verifyCode(getCleanPhone(), code, 'customer');
+      // If user doesn't have PIN yet, redirect to PIN setup
+      if (!result.has_pin) {
+        navigate('/auth/pin-setup');
+      } else {
+        navigate('/customer');
+      }
     } catch (error) {
-      setError(error.response?.data?.detail || 'Неверный код');
+      const detail = error.response?.data?.detail || 'Неверный код';
+      if (detail.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
+      } else {
+        setError(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -119,7 +136,23 @@ const CustomerAuth = () => {
 
         <div className="flex-1 flex items-end">
           <div className="bottom-sheet slide-up">
-            {step === 'phone' ? (
+            {step === 'blocked' ? (
+              <div className="space-y-6 text-center py-8">
+                <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+                  <X className="w-10 h-10 text-red-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Устройство заблокировано</h2>
+                  <p className="text-slate-500">{error || 'Обратитесь к администратору для разблокировки'}</p>
+                </div>
+                <button
+                  onClick={() => navigate('/')}
+                  className="btn-secondary"
+                >
+                  На главную
+                </button>
+              </div>
+            ) : step === 'phone' ? (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 mb-2">Вход для пассажира</h2>

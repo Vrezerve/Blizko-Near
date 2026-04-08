@@ -92,11 +92,13 @@ class LocationUpdate(BaseModel):
 
 class CustomerCreate(BaseModel):
     phone: str
+    device_id: str
     agreed_terms: bool = False
     agreed_privacy: bool = False
 
 class DriverCreate(BaseModel):
     phone: str
+    device_id: str
     name: str
     car_model: str
     car_number: str
@@ -107,6 +109,32 @@ class VerifyCode(BaseModel):
     phone: str
     code: str
     role: str
+    device_id: str
+
+class SetPin(BaseModel):
+    pin: str
+
+class LoginPin(BaseModel):
+    phone: str
+    pin: str
+    role: str
+    device_id: str
+
+class ResetPinRequest(BaseModel):
+    phone: str
+    role: str
+    device_id: str
+
+class ResetPinVerify(BaseModel):
+    phone: str
+    code: str
+    role: str
+    device_id: str
+    new_pin: str
+
+class DeviceBlock(BaseModel):
+    device_id: str
+    reason: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: str
@@ -276,18 +304,75 @@ async def send_notification(user_id: str, title: str, message: str, notification
     await log_action("notification_sent", user_id, {"title": title, "type": notification_type})
     return notification
 
+async def send_admin_email(subject: str, body: str):
+    """Send email notification to admin"""
+    settings = await db.settings.find_one({"id": "main"})
+    admin_email = settings.get("admin_email") if settings else None
+    
+    notification = {
+        "id": str(uuid.uuid4()),
+        "user_id": "admin",
+        "title": subject,
+        "message": body,
+        "type": "email",
+        "to_email": admin_email,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "status": "pending" if admin_email else "no_email_configured"
+    }
+    await db.notifications.insert_one(notification)
+    
+    # TODO: Real SMTP integration
+    # if admin_email and settings.get("smtp_host"):
+    #     send via SMTP
+    
+    await log_action("admin_email_sent", None, {"subject": subject})
+    return notification
+
+async def check_device_blocked(device_id: str) -> dict:
+    """Check if device is blocked"""
+    blocked = await db.blocked_devices.find_one({"device_id": device_id, "is_blocked": True})
+    return blocked
+
+async def block_device(device_id: str, reason: str = None):
+    """Block a device"""
+    await db.blocked_devices.update_one(
+        {"device_id": device_id},
+        {"$set": {
+            "device_id": device_id,
+            "is_blocked": True,
+            "reason": reason,
+            "blocked_at": datetime.now(timezone.utc).isoformat()
+        }},
+        upsert=True
+    )
+    await log_action("device_blocked", None, {"device_id": device_id, "reason": reason})
+
+async def get_device_registration_count(device_id: str) -> int:
+    """Get number of registrations from this device"""
+    count = await db.users.count_documents({"device_id": device_id})
+    return count
+
 # ============ AUTH ROUTES ============
 
 @auth_router.post("/send-code")
 async def send_verification_code(data: dict):
     phone = data.get("phone")
     role = data.get("role")
+    device_id = data.get("device_id")
     
     if not phone or not role:
         raise HTTPException(status_code=400, detail="Phone and role required")
     
+    if not device_id:
+        raise HTTPException(status_code=400, detail="Device ID required")
+    
+    # Check if device is blocked
+    blocked = await check_device_blocked(device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
     # Generate 4-digit code
-    code = "1234"  # Mock code for testing, in production: str(random.randint(1000, 9999))
+    code = str(secrets.randbelow(9000) + 1000)  # Random 4-digit code
     
     # Store code in DB
     await db.verification_codes.delete_many({"phone": phone})
@@ -295,18 +380,30 @@ async def send_verification_code(data: dict):
         "phone": phone,
         "code": code,
         "role": role,
+        "device_id": device_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
     })
     
-    # Log SMS sending
-    await log_action("sms_sent", None, {"phone": phone, "code": code})
-    await send_notification(phone, "Код подтверждения", f"Ваш код: {code}", "sms")
+    # Send push notification with code
+    await send_notification(
+        phone, 
+        "Код подтверждения", 
+        f"Ваш код для входа: {code}", 
+        "push"
+    )
     
-    return {"success": True, "message": "Code sent"}
+    await log_action("verification_code_sent", None, {"phone": phone, "device_id": device_id[:8]})
+    
+    return {"success": True, "message": "Code sent via push notification"}
 
 @auth_router.post("/verify-code")
 async def verify_code(data: VerifyCode):
+    # Check if device is blocked
+    blocked = await check_device_blocked(data.device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
     verification = await db.verification_codes.find_one({
         "phone": data.phone,
         "code": data.code,
@@ -326,10 +423,18 @@ async def verify_code(data: VerifyCode):
     
     if data.role == "customer":
         if not user:
+            # Check registration count from this device
+            reg_count = await get_device_registration_count(data.device_id)
+            if reg_count >= 1:
+                # Block device after 2nd registration attempt
+                await block_device(data.device_id, "Множественные регистрации с одного устройства")
+                raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
+            
             # Create new customer
             user = {
                 "id": str(uuid.uuid4()),
                 "phone": data.phone,
+                "device_id": data.device_id,
                 "role": "customer",
                 "name": None,
                 "avatar": None,
@@ -339,12 +444,31 @@ async def verify_code(data: VerifyCode):
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.users.insert_one(user)
-            await log_action("customer_registered", user["id"], {"phone": data.phone})
+            await log_action("customer_registered", user["id"], {"phone": data.phone, "device_id": data.device_id[:8]})
+            
+            # Send email to admin about new registration
+            await send_admin_email(
+                "Новая регистрация пассажира",
+                f"Новый пассажир зарегистрирован:\n\nТелефон: {data.phone}\nID устройства: {data.device_id[:16]}...\nВремя: {datetime.now(timezone.utc).isoformat()}"
+            )
+        else:
+            # Check if user's device matches
+            if user.get("device_id") and user.get("device_id") != data.device_id:
+                # Different device trying to login - potential issue
+                await log_action("login_different_device", user["id"], {
+                    "original_device": user.get("device_id", "")[:8],
+                    "new_device": data.device_id[:8]
+                })
+            # Update device_id on login
+            await db.users.update_one({"id": user["id"]}, {"$set": {"device_id": data.device_id}})
+            
     elif data.role == "driver":
         if not user:
             raise HTTPException(status_code=400, detail="Driver not registered")
         if not user.get("is_activated", False):
             raise HTTPException(status_code=403, detail="AWAITING_ACTIVATION")
+        # Update device_id on login
+        await db.users.update_one({"id": user["id"]}, {"$set": {"device_id": data.device_id}})
     
     # Delete used code
     await db.verification_codes.delete_many({"phone": data.phone})
@@ -352,15 +476,179 @@ async def verify_code(data: VerifyCode):
     # Create token
     token = create_access_token(user["id"], user["role"])
     user.pop("_id", None)
+    user.pop("pin_hash", None)
+    user.pop("password_hash", None)
     
-    await log_action("user_login", user["id"], {"phone": data.phone, "role": data.role})
+    has_pin = user.get("has_pin", False)
+    
+    await log_action("user_login", user["id"], {"phone": data.phone, "role": data.role, "device_id": data.device_id[:8]})
+    
+    return {"token": token, "user": user, "has_pin": has_pin}
+
+@auth_router.post("/set-pin")
+async def set_user_pin(data: SetPin, user: dict = Depends(get_current_user)):
+    """Set or update user's PIN code"""
+    if not data.pin or len(data.pin) != 4 or not data.pin.isdigit():
+        raise HTTPException(status_code=400, detail="PIN must be 4 digits")
+    
+    pin_hash = hash_password(data.pin)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"pin_hash": pin_hash, "has_pin": True}}
+    )
+    await log_action("pin_set", user["id"], {"phone": user["phone"]})
+    return {"success": True}
+
+@auth_router.post("/login-pin")
+async def login_with_pin(data: LoginPin):
+    """Login with phone + PIN (no OTP needed)"""
+    # Check device blocked
+    blocked = await check_device_blocked(data.device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
+    user = await db.users.find_one({"phone": data.phone, "role": data.role})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.get("pin_hash"):
+        raise HTTPException(status_code=400, detail="PIN not set")
+    
+    if not verify_password(data.pin, user["pin_hash"]):
+        # Track failed attempts
+        attempts = user.get("pin_attempts", 0) + 1
+        await db.users.update_one({"id": user["id"]}, {"$set": {"pin_attempts": attempts}})
+        
+        if attempts >= 5:
+            # Lock PIN after 5 failed attempts, require OTP reset
+            await db.users.update_one({"id": user["id"]}, {"$set": {"pin_locked": True}})
+            await log_action("pin_locked", user["id"], {"reason": "Too many failed attempts"})
+            raise HTTPException(status_code=403, detail="PIN_LOCKED")
+        
+        raise HTTPException(status_code=401, detail=f"WRONG_PIN:{5 - attempts}")
+    
+    # Check driver activation
+    if data.role == "driver" and not user.get("is_activated", False):
+        raise HTTPException(status_code=403, detail="AWAITING_ACTIVATION")
+    
+    # Reset pin attempts on successful login
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"pin_attempts": 0, "device_id": data.device_id}}
+    )
+    
+    token = create_access_token(user["id"], user["role"])
+    user.pop("_id", None)
+    user.pop("pin_hash", None)
+    user.pop("password_hash", None)
+    
+    await log_action("user_login", user["id"], {"phone": data.phone, "role": data.role, "method": "pin"})
     
     return {"token": token, "user": user}
+
+@auth_router.post("/reset-pin-request")
+async def reset_pin_request(data: ResetPinRequest):
+    """Send OTP code for PIN reset"""
+    blocked = await check_device_blocked(data.device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
+    user = await db.users.find_one({"phone": data.phone, "role": data.role})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    code = str(secrets.randbelow(9000) + 1000)
+    
+    await db.verification_codes.delete_many({"phone": data.phone})
+    await db.verification_codes.insert_one({
+        "phone": data.phone,
+        "code": code,
+        "role": data.role,
+        "device_id": data.device_id,
+        "purpose": "pin_reset",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    })
+    
+    await send_notification(user["id"], "Сброс PIN-кода", f"Ваш код для сброса PIN: {code}", "push")
+    await log_action("pin_reset_requested", user["id"], {"phone": data.phone})
+    
+    return {"success": True, "message": "Code sent for PIN reset"}
+
+@auth_router.post("/reset-pin-verify")
+async def reset_pin_verify(data: ResetPinVerify):
+    """Verify OTP and set new PIN"""
+    blocked = await check_device_blocked(data.device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
+    verification = await db.verification_codes.find_one({
+        "phone": data.phone, "code": data.code, "role": data.role
+    })
+    if not verification:
+        raise HTTPException(status_code=400, detail="Invalid code")
+    
+    expires_at = datetime.fromisoformat(verification["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Code expired")
+    
+    if not data.new_pin or len(data.new_pin) != 4 or not data.new_pin.isdigit():
+        raise HTTPException(status_code=400, detail="PIN must be 4 digits")
+    
+    user = await db.users.find_one({"phone": data.phone, "role": data.role})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    pin_hash = hash_password(data.new_pin)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"pin_hash": pin_hash, "has_pin": True, "pin_locked": False, "pin_attempts": 0, "device_id": data.device_id}}
+    )
+    
+    await db.verification_codes.delete_many({"phone": data.phone})
+    
+    # Auto-login after PIN reset
+    token = create_access_token(user["id"], user["role"])
+    user.pop("_id", None)
+    user.pop("pin_hash", None)
+    user.pop("password_hash", None)
+    
+    await log_action("pin_reset_complete", user["id"], {"phone": data.phone})
+    
+    return {"token": token, "user": user}
+
+@auth_router.get("/check-pin/{phone}/{role}")
+async def check_has_pin(phone: str, role: str):
+    """Check if user has PIN set"""
+    user = await db.users.find_one({"phone": phone, "role": role})
+    if not user:
+        return {"exists": False, "has_pin": False, "pin_locked": False}
+    
+    return {
+        "exists": True,
+        "has_pin": user.get("has_pin", False),
+        "pin_locked": user.get("pin_locked", False),
+        "is_activated": user.get("is_activated", True)
+    }
 
 @auth_router.post("/register-driver")
 async def register_driver(data: DriverCreate):
     if not data.agreed_terms or not data.agreed_privacy:
         raise HTTPException(status_code=400, detail="Must agree to terms and privacy policy")
+    
+    if not data.device_id:
+        raise HTTPException(status_code=400, detail="Device ID required")
+    
+    # Check if device is blocked
+    blocked = await check_device_blocked(data.device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+    
+    # Check registration count from this device
+    reg_count = await get_device_registration_count(data.device_id)
+    if reg_count >= 1:
+        await block_device(data.device_id, "Множественные регистрации с одного устройства")
+        raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
     
     # Check if driver already exists
     existing = await db.users.find_one({"phone": data.phone, "role": "driver"})
@@ -371,6 +659,7 @@ async def register_driver(data: DriverCreate):
     driver = {
         "id": str(uuid.uuid4()),
         "phone": data.phone,
+        "device_id": data.device_id,
         "role": "driver",
         "name": data.name,
         "car_model": data.car_model,
@@ -389,7 +678,13 @@ async def register_driver(data: DriverCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(driver)
-    await log_action("driver_registered", driver["id"], {"phone": data.phone, "name": data.name})
+    await log_action("driver_registered", driver["id"], {"phone": data.phone, "name": data.name, "device_id": data.device_id[:8]})
+    
+    # Send email to admin about new driver registration
+    await send_admin_email(
+        "Новая регистрация водителя",
+        f"Новый водитель ожидает активации:\n\nФИО: {data.name}\nТелефон: {data.phone}\nАвтомобиль: {data.car_model}\nНомер: {data.car_number}\nID устройства: {data.device_id[:16]}...\nВремя: {datetime.now(timezone.utc).isoformat()}\n\nПерейдите в админ-панель для активации."
+    )
     
     return {"success": True, "message": "Registration submitted. Awaiting activation."}
 
@@ -954,6 +1249,8 @@ async def get_admin_stats(user: dict = Depends(get_admin_user)):
     problem_orders = await db.orders.count_documents({"status": "problem"})
     pending_orders = await db.orders.count_documents({"status": "pending"})
     
+    blocked_devices = await db.blocked_devices.count_documents({"is_blocked": True})
+    
     return {
         "customers": total_customers,
         "drivers": {
@@ -967,8 +1264,31 @@ async def get_admin_stats(user: dict = Depends(get_admin_user)):
             "completed": completed_orders,
             "problem": problem_orders,
             "pending": pending_orders
-        }
+        },
+        "blocked_devices": blocked_devices
     }
+
+@admin_router.get("/blocked-devices")
+async def get_blocked_devices(user: dict = Depends(get_admin_user)):
+    """Get all blocked devices"""
+    devices = await db.blocked_devices.find({}, {"_id": 0}).sort("blocked_at", -1).to_list(100)
+    return devices
+
+@admin_router.post("/block-device")
+async def admin_block_device(data: DeviceBlock, user: dict = Depends(get_admin_user)):
+    """Block a device manually"""
+    await block_device(data.device_id, data.reason or "Заблокировано администратором")
+    return {"success": True}
+
+@admin_router.post("/unblock-device/{device_id}")
+async def admin_unblock_device(device_id: str, user: dict = Depends(get_admin_user)):
+    """Unblock a device"""
+    await db.blocked_devices.update_one(
+        {"device_id": device_id},
+        {"$set": {"is_blocked": False, "unblocked_at": datetime.now(timezone.utc).isoformat(), "unblocked_by": user["id"]}}
+    )
+    await log_action("device_unblocked", None, {"device_id": device_id, "unblocked_by": user["id"]})
+    return {"success": True}
 
 # ============ SETTINGS ROUTES ============
 
@@ -1118,10 +1438,10 @@ async def startup():
     # Write test credentials
     os.makedirs("/app/memory", exist_ok=True)
     with open("/app/memory/test_credentials.md", "w") as f:
-        f.write(f"# Test Credentials\n\n")
+        f.write("# Test Credentials\n\n")
         f.write(f"## Admin\n- Email: {admin_email}\n- Password: {admin_password}\n\n")
-        f.write(f"## Test Customer\n- Phone: +79001234567\n- SMS Code: 1234\n\n")
-        f.write(f"## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
+        f.write("## Test Customer\n- Phone: +79001234567\n- SMS Code: 1234\n\n")
+        f.write("## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
     
     logger.info("Taxi WebToApp API started")
 
