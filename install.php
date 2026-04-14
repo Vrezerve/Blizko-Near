@@ -813,41 +813,25 @@ body {
   <!-- ========== ШАГ 3: Настройки ========== -->
   <div class="step-card" id="step-3">
     <div class="step-title">Настройки</div>
-    <div class="step-subtitle">Укажите параметры вашего сервиса</div>
+    <div class="step-subtitle">Укажите только домен. Остальное настроится автоматически.</div>
     <div class="form-group">
       <label>Домен или IP-адрес сервера</label>
       <input type="text" id="cfgDomain" placeholder="example.com или 123.45.67.89">
     </div>
-    <div class="toggle-row">
-      <label class="toggle">
-        <input type="checkbox" id="cfgSSL">
-        <div class="toggle-track"></div>
-      </label>
-      <span>Настроить HTTPS (SSL) — только для доменов</span>
+    <input type="hidden" id="cfgSSL" value="">
+    <input type="hidden" id="cfgAdminEmail" value="admin@taxi.local">
+    <input type="hidden" id="cfgAdminPass" value="admin123">
+    <input type="hidden" id="cfgMongoUrl" value="mongodb://localhost:27017">
+    <input type="hidden" id="cfgDbName" value="taxi_production">
+    <div class="check-list" style="margin-top:16px">
+      <div class="check-item"><div class="check-icon ok">&#10003;</div><div>MongoDB: localhost:27017 / taxi_production</div></div>
+      <div class="check-item"><div class="check-icon ok">&#10003;</div><div>Админ: admin@taxi.local / admin123</div></div>
+      <div class="check-item"><div class="check-icon ok">&#10003;</div><div>Тестовый режим: включён (код 1234)</div></div>
     </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Email администратора</label>
-        <input type="email" id="cfgAdminEmail" placeholder="admin@example.com">
-      </div>
-      <div class="form-group">
-        <label>Пароль администратора</label>
-        <input type="password" id="cfgAdminPass" placeholder="Мин. 6 символов">
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>MongoDB URL</label>
-        <input type="text" id="cfgMongoUrl" value="mongodb://localhost:27017">
-      </div>
-      <div class="form-group">
-        <label>Имя базы данных</label>
-        <input type="text" id="cfgDbName" value="taxi_production">
-      </div>
-    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:12px">Пароль и настройки можно сменить в Админ-панели после установки</p>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="goStep(2)">Назад</button>
-      <button class="btn btn-primary" onclick="validateAndGo()">Далее</button>
+      <button class="btn btn-primary" onclick="validateAndGo()">Установить</button>
     </div>
   </div>
 
@@ -1105,24 +1089,19 @@ function prefillConfig() {
 
 function validateAndGo() {
   const domain = $('cfgDomain').value.trim();
-  const email = $('cfgAdminEmail').value.trim();
-  const pass = $('cfgAdminPass').value;
 
   if (!domain) return alert('Введите домен или IP-адрес');
-  if (!email) return alert('Введите email администратора');
-  if (pass.length < 6) return alert('Пароль должен быть не менее 6 символов');
 
   const isIP = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(domain);
-  const ssl = $('cfgSSL').checked && !isIP;
 
   cfg = {
     domain: domain,
-    protocol: ssl ? 'https' : 'http',
-    ssl: ssl,
-    adminEmail: email,
-    adminPass: pass,
-    mongoUrl: $('cfgMongoUrl').value.trim() || 'mongodb://localhost:27017',
-    dbName: $('cfgDbName').value.trim() || 'taxi_production'
+    protocol: 'http',
+    ssl: false,
+    adminEmail: 'admin@taxi.local',
+    adminPass: 'admin123',
+    mongoUrl: 'mongodb://localhost:27017',
+    dbName: 'taxi_production'
   };
 
   goStep(4);
@@ -1247,10 +1226,13 @@ async function runFinalCheck() {
   result += '<div class="summary-grid">';
   result += '<div class="summary-label">Сайт:</div><div class="summary-value"><a href="' + cfg.protocol + '://' + cfg.domain + '" target="_blank" style="color:var(--accent)">' + cfg.protocol + '://' + cfg.domain + '</a></div>';
   result += '<div class="summary-label">Админ-панель:</div><div class="summary-value"><a href="' + cfg.protocol + '://' + cfg.domain + '/admin/login" target="_blank" style="color:var(--accent)">' + cfg.protocol + '://' + cfg.domain + '/admin/login</a></div>';
-  result += '<div class="summary-label">Email админа:</div><div class="summary-value">' + cfg.adminEmail + '</div>';
+  result += '<div class="summary-label">Логин админа:</div><div class="summary-value">admin@taxi.local</div>';
+  result += '<div class="summary-label">Пароль админа:</div><div class="summary-value">admin123</div>';
   result += '<div class="summary-label">Тестовый OTP:</div><div class="summary-value">1234</div>';
   result += '<div class="summary-label">Обновление:</div><div class="summary-value">bash update.sh</div>';
   result += '</div>';
+  
+  result += '<p style="font-size:12px;color:var(--yellow);margin:12px 0">Смените пароль в админке после первого входа!</p>';
 
   result += '<div class="warn-box">Для безопасности удалите install.php с сервера!</div>';
 
