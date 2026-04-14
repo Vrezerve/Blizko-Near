@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Mail, Lock, Loader2, Shield } from 'lucide-react';
+import axios from 'axios';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
@@ -11,6 +14,11 @@ const AdminLogin = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [testMode, setTestMode] = useState(null);
+
+  useEffect(() => {
+    axios.get(`${API}/settings/public`).then(r => setTestMode(r.data.test_mode !== false)).catch(() => {});
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -99,9 +107,11 @@ const AdminLogin = () => {
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-400 mt-6">
-            Тестовые данные: admin@taxi.local / admin123
-          </p>
+          {testMode && (
+            <p className="text-center text-sm text-slate-400 mt-6">
+              Тестовые данные: admin@taxi.local / admin123
+            </p>
+          )}
         </div>
       </div>
     </div>

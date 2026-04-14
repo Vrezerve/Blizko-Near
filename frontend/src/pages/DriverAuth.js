@@ -373,7 +373,9 @@ const DriverAuth = () => {
                 placeholder="• • • •"
                 autoFocus
               />
-              <p className="text-xs text-slate-400 mt-2 text-center">Для тестирования используйте код: 1234</p>
+              {settings?.test_mode !== false && (
+                <p className="text-xs text-slate-400 mt-2 text-center">Для тестирования используйте код: 1234</p>
+              )}
             </div>
 
             {error && <p className="text-red-500 text-sm">{error}</p>}

@@ -229,6 +229,7 @@ const AdminPanel = () => {
   const [updateResult, setUpdateResult] = useState(null);
   const [newModule, setNewModule] = useState({ name: '', description: '', version: '1.0' });
   const [showAddModule, setShowAddModule] = useState(false);
+  const [moduleUploading, setModuleUploading] = useState(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -404,15 +405,58 @@ const AdminPanel = () => {
   };
 
   // ── Modules & Updates ─────────────
-  const handleAddModule = async () => {
+  const handleAddModule = async (fileToUpload) => {
     if (!newModule.name.trim()) return;
     try {
-      await api('POST', '/admin/modules', newModule);
+      const result = await api('POST', '/admin/modules', newModule);
+      const moduleId = result.module?.id;
+      
+      // Upload ZIP if provided
+      if (fileToUpload && moduleId) {
+        setModuleUploading(moduleId);
+        const formData = new FormData();
+        formData.append('file', fileToUpload);
+        await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/modules/${moduleId}/upload`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+        });
+        setModuleUploading(null);
+      }
+      
       setNewModule({ name: '', description: '', version: '1.0' });
       setShowAddModule(false);
       loadData();
     } catch (error) {
+      setModuleUploading(null);
       alert('Ошибка добавления модуля');
+    }
+  };
+
+  const handleModuleFileUpload = async (moduleId, file) => {
+    if (!file || !file.name.endsWith('.zip')) {
+      alert('Допустим только формат ZIP');
+      return;
+    }
+    setModuleUploading(moduleId);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/modules/${moduleId}/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.success) {
+        loadData();
+      } else {
+        alert(data.detail || 'Ошибка загрузки');
+      }
+    } catch (error) {
+      alert('Ошибка загрузки архива');
+    } finally {
+      setModuleUploading(null);
     }
   };
 
@@ -426,15 +470,20 @@ const AdminPanel = () => {
   };
 
   const handleDeleteModule = async (moduleId) => {
-    if (!window.confirm('Удалить модуль?')) return;
+    if (!window.confirm('Удалить модуль и его архив?')) return;
     try {
-      await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/modules/${moduleId}`, {
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/modules/${moduleId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      loadData();
+      const data = await response.json();
+      if (data.success) {
+        loadData();
+      } else {
+        alert(data.detail || 'Ошибка удаления');
+      }
     } catch (error) {
-      alert('Ошибка удаления');
+      alert('Ошибка удаления модуля');
     }
   };
 
@@ -1200,28 +1249,51 @@ const AdminPanel = () => {
 
         {/* Maintenance */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Режим обслуживания</h3>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Режимы работы</h3>
           
           <div className="space-y-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.maintenance_mode || false}
-                onChange={(e) => setSettings({...settings, maintenance_mode: e.target.checked})}
-                className="checkbox-custom"
-              />
-              <span className="text-slate-700">Включить режим тех. работ</span>
-            </label>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Текст уведомления</label>
-              <textarea
-                value={settings.maintenance_text || ''}
-                onChange={(e) => setSettings({...settings, maintenance_text: e.target.value})}
-                className="input-field min-h-[100px]"
-                placeholder="Ведутся технические работы..."
-              />
+            <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl border border-amber-200">
+              <div>
+                <p className="font-medium text-slate-900">Тестовый режим</p>
+                <p className="text-xs text-slate-500 mt-1">Код 1234 принимается для входа. Тестовые подсказки видны пользователям.</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  data-testid="settings-test-mode"
+                  type="checkbox"
+                  checked={settings.test_mode !== false}
+                  onChange={(e) => setSettings({...settings, test_mode: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
             </div>
+
+            <div className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-200">
+              <div>
+                <p className="font-medium text-slate-900">Режим тех. работ</p>
+                <p className="text-xs text-slate-500 mt-1">Пользователи увидят сообщение о тех. работах</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.maintenance_mode || false}
+                  onChange={(e) => setSettings({...settings, maintenance_mode: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
+
+            {settings.maintenance_mode && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Текст уведомления</label>
+                <textarea
+                  value={settings.maintenance_text || ''}
+                  onChange={(e) => setSettings({...settings, maintenance_text: e.target.value})}
+                  className="input-field min-h-[100px]"
+                  placeholder="Ведутся технические работы..."
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -1461,10 +1533,24 @@ const AdminPanel = () => {
                 className="input-field"
               />
             </div>
+            <div className="mb-3">
+              <label className="block text-sm font-medium text-slate-700 mb-2">ZIP-архив модуля (опционально)</label>
+              <input
+                data-testid="module-file-input"
+                type="file"
+                accept=".zip"
+                id="moduleFileInput"
+                className="text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"
+              />
+            </div>
             <div className="flex gap-2">
               <button
                 data-testid="save-module-btn"
-                onClick={handleAddModule}
+                onClick={() => {
+                  const fileInput = document.getElementById('moduleFileInput');
+                  const file = fileInput?.files?.[0];
+                  handleAddModule(file);
+                }}
                 disabled={!newModule.name.trim()}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
               >
@@ -1487,10 +1573,29 @@ const AdminPanel = () => {
                   </div>
                   <div>
                     <p className={`font-medium ${mod.enabled ? 'text-slate-900' : 'text-slate-400'}`}>{mod.name}</p>
-                    <p className="text-xs text-slate-400">{mod.description || 'Без описания'} &middot; v{mod.version}</p>
+                    <p className="text-xs text-slate-400">
+                      {mod.description || 'Без описания'} &middot; v{mod.version}
+                      {mod.filename && <span className="ml-2 text-purple-500">&middot; {mod.filename}</span>}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <label className={`p-2 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-500 transition-colors cursor-pointer ${moduleUploading === mod.id ? 'opacity-50 pointer-events-none' : ''}`} title="Загрузить архив">
+                    {moduleUploading === mod.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+                    ) : (
+                      <Upload className="w-4 h-4" />
+                    )}
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleModuleFileUpload(mod.id, e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <button
                     data-testid={`toggle-module-${mod.id}`}
                     onClick={() => handleToggleModule(mod.id)}

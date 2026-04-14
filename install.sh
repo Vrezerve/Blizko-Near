@@ -432,12 +432,21 @@ main() {
     # ── ШАГ 4: Сбор настроек ────────────────────────────────
     print_step "Настройка параметров"
     
-    echo -e "  ${WHITE}Укажите параметры для вашего сервиса:${NC}"
+    echo -e "  ${WHITE}╭──────────────────────────────────────────────────╮${NC}"
+    echo -e "  ${WHITE}│  Сейчас вам нужно будет ответить на несколько   │${NC}"
+    echo -e "  ${WHITE}│  вопросов. Просто вводите значения и нажимайте  │${NC}"
+    echo -e "  ${WHITE}│  Enter. В скобках [] указаны значения по        │${NC}"
+    echo -e "  ${WHITE}│  умолчанию — нажмите Enter чтобы их принять.    │${NC}"
+    echo -e "  ${WHITE}╰──────────────────────────────────────────────────╯${NC}"
     echo ""
     
-    # Домен
+    # ── 4.1 Домен ──
+    echo -e "  ${CYAN}── 1/6: Домен ──${NC}"
     local server_ip
     server_ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
+    echo -e "  ${DIM}IP вашего сервера: ${server_ip}${NC}"
+    echo -e "  ${DIM}Если у вас есть домен (taxi.ru), введите его.${NC}"
+    echo -e "  ${DIM}Если нет — просто нажмите Enter (будет IP).${NC}"
     
     DOMAIN=$(ask_input "Домен (или IP-адрес)" "$server_ip")
     
@@ -454,7 +463,27 @@ main() {
     
     echo ""
     
-    # Админ
+    # ── 4.2 База данных ──
+    echo -e "  ${CYAN}── 2/6: База данных MongoDB ──${NC}"
+    echo -e "  ${DIM}Обычно MongoDB работает на localhost:27017${NC}"
+    echo -e "  ${DIM}Если вы настроили MongoDB с паролем в ISPmanager,${NC}"
+    echo -e "  ${DIM}введите строку подключения с логином и паролем.${NC}"
+    echo ""
+    
+    local MONGO_URL
+    MONGO_URL=$(ask_input "MongoDB URL" "mongodb://localhost:27017")
+    
+    local DB_NAME
+    DB_NAME=$(ask_input "Имя базы данных" "taxi_production")
+    
+    echo -e "  ${OK} БД: ${MONGO_URL} / ${DB_NAME}"
+    echo ""
+    
+    # ── 4.3 Администратор ──
+    echo -e "  ${CYAN}── 3/6: Администратор ──${NC}"
+    echo -e "  ${DIM}Эти данные для входа в панель управления.${NC}"
+    echo ""
+    
     ADMIN_EMAIL=$(ask_input "Email администратора" "admin@${DOMAIN}")
     
     while true; do
@@ -467,17 +496,81 @@ main() {
         echo -e "  ${WARN} Пароль слишком короткий"
     done
     
+    echo ""
+    
+    # ── 4.4 API-ключи (опционально) ──
+    echo -e "  ${CYAN}── 4/6: API-ключи (можно пропустить) ──${NC}"
+    echo -e "  ${DIM}Эти ключи можно настроить позже в Админ-панели.${NC}"
+    echo -e "  ${DIM}Нажмите Enter чтобы пропустить.${NC}"
+    echo ""
+    
+    local SMS_RU_KEY=""
+    local ONESIGNAL_APP_ID=""
+    local ONESIGNAL_API_KEY=""
+    local MAP_PROVIDER="yandex"
+    local MAP_API_KEY=""
+    
+    SMS_RU_KEY=$(ask_input "SMS.ru API ключ (для отправки SMS)" "")
+    ONESIGNAL_APP_ID=$(ask_input "OneSignal App ID (для Push-уведомлений)" "")
+    
+    if [ -n "$ONESIGNAL_APP_ID" ]; then
+        ONESIGNAL_API_KEY=$(ask_input "OneSignal API Key" "")
+    fi
+    
+    echo ""
+    echo -e "  ${DIM}Провайдер карт: yandex / google / 2gis${NC}"
+    MAP_PROVIDER=$(ask_input "Провайдер карт" "yandex")
+    MAP_API_KEY=$(ask_input "API ключ карт (${MAP_PROVIDER})" "")
+    
+    echo ""
+    
+    # ── 4.5 SMTP (опционально) ──
+    echo -e "  ${CYAN}── 5/6: SMTP Email (можно пропустить) ──${NC}"
+    echo -e "  ${DIM}Для отправки email-уведомлений администратору.${NC}"
+    echo ""
+    
+    local SMTP_HOST=""
+    local SMTP_PORT="587"
+    local SMTP_USER=""
+    local SMTP_PASS=""
+    
+    SMTP_HOST=$(ask_input "SMTP сервер (smtp.mail.ru)" "")
+    if [ -n "$SMTP_HOST" ]; then
+        SMTP_PORT=$(ask_input "SMTP порт" "587")
+        SMTP_USER=$(ask_input "SMTP логин (email)" "")
+        echo -ne "  SMTP пароль: "
+        read -rs SMTP_PASS
+        echo ""
+    fi
+    
+    echo ""
+    
+    # ── 4.6 Тестовый режим ──
+    echo -e "  ${CYAN}── 6/6: Тестовый режим ──${NC}"
+    echo -e "  ${DIM}В тестовом режиме код 1234 принимается для входа.${NC}"
+    echo -e "  ${DIM}Рекомендуется оставить включённым на время настройки.${NC}"
+    
+    local TEST_MODE="true"
+    if ! ask_yes_no "Включить тестовый режим?" "y"; then
+        TEST_MODE="false"
+    fi
+    
     # JWT Secret
     JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
     echo -e "  ${OK} JWT-ключ сгенерирован"
     
     echo ""
     echo -e "  ${WHITE}Итого:${NC}"
-    echo -e "  ${DIM}────────────────────────────────${NC}"
-    echo -e "  Домен:   ${BOLD}${PROTOCOL}://${DOMAIN}${NC}"
-    echo -e "  Админ:   ${BOLD}${ADMIN_EMAIL}${NC}"
-    echo -e "  Проект:  ${BOLD}${INSTALL_DIR}${NC}"
-    echo -e "  ${DIM}────────────────────────────────${NC}"
+    echo -e "  ${DIM}────────────────────────────────────────────${NC}"
+    echo -e "  Домен:        ${BOLD}${PROTOCOL}://${DOMAIN}${NC}"
+    echo -e "  Админ:        ${BOLD}${ADMIN_EMAIL}${NC}"
+    echo -e "  БД:           ${BOLD}${MONGO_URL}/${DB_NAME}${NC}"
+    echo -e "  Карты:        ${BOLD}${MAP_PROVIDER}${NC}"
+    echo -e "  SMS.ru:       ${BOLD}${SMS_RU_KEY:-не настроен}${NC}"
+    echo -e "  SMTP:         ${BOLD}${SMTP_HOST:-не настроен}${NC}"
+    echo -e "  Тест. режим:  ${BOLD}${TEST_MODE}${NC}"
+    echo -e "  Проект:       ${BOLD}${INSTALL_DIR}${NC}"
+    echo -e "  ${DIM}────────────────────────────────────────────${NC}"
     echo ""
     
     if ! ask_yes_no "Всё верно? Продолжить?"; then
@@ -515,8 +608,8 @@ main() {
     fi
     
     cat > .env << ENVEOF
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=taxi_production
+MONGO_URL=${MONGO_URL}
+DB_NAME=${DB_NAME}
 JWT_SECRET=${JWT_SECRET}
 ADMIN_EMAIL=${ADMIN_EMAIL}
 ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -609,6 +702,38 @@ SVCEOF
     else
         echo -e "  ${WARN} API пока не отвечает (возможно, ещё запускается)"
     fi
+    
+    # Инициализация настроек в БД
+    echo -e "  ${ARROW} Сохранение настроек в базу данных..."
+    source "${INSTALL_DIR}/backend/venv/bin/activate"
+    python3 << PYEOF
+from pymongo import MongoClient
+client = MongoClient("${MONGO_URL}")
+db = client["${DB_NAME}"]
+settings_update = {
+    "id": "main",
+    "app_name": "Рядом",
+    "test_mode": ${TEST_MODE},
+    "active_map_provider": "${MAP_PROVIDER}",
+}
+if "${SMS_RU_KEY}":
+    settings_update["sms_ru_api_key"] = "${SMS_RU_KEY}"
+if "${ONESIGNAL_APP_ID}":
+    settings_update["onesignal_app_id"] = "${ONESIGNAL_APP_ID}"
+if "${ONESIGNAL_API_KEY}":
+    settings_update["onesignal_api_key"] = "${ONESIGNAL_API_KEY}"
+if "${MAP_API_KEY}":
+    key_name = {"yandex": "yandex_map_api_key", "google": "google_map_api_key", "2gis": "twogis_api_key"}.get("${MAP_PROVIDER}", "yandex_map_api_key")
+    settings_update[key_name] = "${MAP_API_KEY}"
+if "${SMTP_HOST}":
+    settings_update["smtp_host"] = "${SMTP_HOST}"
+    settings_update["smtp_port"] = int("${SMTP_PORT}" or 587)
+    settings_update["smtp_user"] = "${SMTP_USER}"
+    settings_update["smtp_password"] = "${SMTP_PASS}"
+db.settings.update_one({"id": "main"}, {"\$set": settings_update}, upsert=True)
+print("OK")
+PYEOF
+    echo -e "  ${OK} Настройки сохранены в БД"
 
     # ── ШАГ 8: Настройка Nginx ──────────────────────────────
     print_step "Настройка веб-сервера (Nginx)"
@@ -859,14 +984,23 @@ CRONEOF
     echo -e "  Админ-панель: ${BOLD}${PROTOCOL}://${DOMAIN}/admin/login${NC}"
     echo -e "  Email админа: ${BOLD}${ADMIN_EMAIL}${NC}"
     echo -e "  Пароль админа:${BOLD} (тот что вы ввели)${NC}"
-    echo -e "  Тестовый код: ${BOLD}1234${NC}"
+    echo -e "  БД:           ${BOLD}${MONGO_URL}/${DB_NAME}${NC}"
+    if [ "${TEST_MODE}" = "true" ]; then
+        echo -e "  Тест. режим:  ${GREEN}${BOLD}Включён${NC} ${DIM}(код 1234)${NC}"
+    else
+        echo -e "  Тест. режим:  ${RED}${BOLD}Отключён${NC}"
+    fi
     echo -e "  ${DIM}────────────────────────────────────────────────${NC}"
     echo ""
     echo -e "  ${WHITE}Быстрый тест:${NC}"
     echo -e "  1. Откройте ${PROTOCOL}://${DOMAIN}"
     echo -e "  2. Нажмите «Заказчик»"
     echo -e "  3. Введите любой телефон, примите условия"
-    echo -e "  4. Введите код ${BOLD}1234${NC}"
+    if [ "${TEST_MODE}" = "true" ]; then
+        echo -e "  4. Введите код ${BOLD}1234${NC}"
+    else
+        echo -e "  4. Дождитесь SMS с кодом"
+    fi
     echo -e "  5. Придумайте PIN-код"
     echo ""
     echo -e "  ${WHITE}Полезные команды:${NC}"

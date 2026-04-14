@@ -150,7 +150,7 @@ const TrackingMap = ({ userLocation, driverLocation, driverInfo, showUserPin = t
       {/* Location info */}
       {!driverPos && (
         <div className="absolute left-4 bottom-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-xs text-slate-600">
-          <p>Тестовая карта</p>
+          <p>Карта</p>
           <p className="text-slate-400">Нажмите для выбора точки</p>
         </div>
       )}

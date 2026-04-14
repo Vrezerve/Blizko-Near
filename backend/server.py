@@ -211,6 +211,7 @@ class SettingsUpdate(BaseModel):
     driver_rules_text: Optional[str] = None
     maintenance_mode: bool = False
     maintenance_text: Optional[str] = None
+    test_mode: Optional[bool] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -414,8 +415,10 @@ async def verify_code(data: VerifyCode):
     if blocked:
         raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
     
-    # Accept test code "1234" for any user
-    is_test_code = data.code == "1234"
+    # Check if test mode is enabled before accepting test code
+    settings = await db.settings.find_one({"id": "main"})
+    is_test_mode = settings.get("test_mode", True) if settings else True
+    is_test_code = data.code == "1234" and is_test_mode
     
     if not is_test_code:
         verification = await db.verification_codes.find_one({
@@ -596,7 +599,10 @@ async def reset_pin_verify(data: ResetPinVerify):
     if blocked:
         raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
     
-    is_test_code = data.code == "1234"
+    # Check if test mode is enabled before accepting test code
+    settings = await db.settings.find_one({"id": "main"})
+    is_test_mode = settings.get("test_mode", True) if settings else True
+    is_test_code = data.code == "1234" and is_test_mode
     
     if not is_test_code:
         verification = await db.verification_codes.find_one({
@@ -1327,12 +1333,43 @@ async def install_module(data: dict, user: dict = Depends(get_admin_user)):
         "description": data.get("description", ""),
         "version": data.get("version", "1.0"),
         "enabled": True,
+        "archive_path": "",
         "installed_at": datetime.now(timezone.utc).isoformat(),
         "installed_by": user["id"]
     }
     await db.modules.insert_one(module)
     await log_action("module_installed", user["id"], {"module": module["name"]})
     return {"success": True, "module": {k: v for k, v in module.items() if k != "_id"}}
+
+@admin_router.post("/modules/{module_id}/upload")
+async def upload_module_archive(module_id: str, file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload ZIP archive for a module"""
+    module = await db.modules.find_one({"id": module_id})
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Допустим только формат ZIP")
+    
+    modules_dir = os.path.join(os.path.dirname(__file__), "uploads", "modules")
+    os.makedirs(modules_dir, exist_ok=True)
+    
+    # Remove old archive if exists
+    old_path = module.get("archive_path", "")
+    if old_path:
+        full_old = os.path.join(os.path.dirname(__file__), old_path.lstrip("/"))
+        if os.path.exists(full_old):
+            os.remove(full_old)
+    
+    safe_name = f"{module_id}_{file.filename}"
+    file_path = os.path.join(modules_dir, safe_name)
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    archive_url = f"/uploads/modules/{safe_name}"
+    await db.modules.update_one({"id": module_id}, {"$set": {"archive_path": archive_url, "filename": file.filename}})
+    await log_action("module_archive_uploaded", user["id"], {"module": module["name"], "file": file.filename})
+    return {"success": True, "archive_path": archive_url}
 
 @admin_router.post("/modules/{module_id}/toggle")
 async def toggle_module(module_id: str, user: dict = Depends(get_admin_user)):
@@ -1348,10 +1385,17 @@ async def toggle_module(module_id: str, user: dict = Depends(get_admin_user)):
 
 @admin_router.delete("/modules/{module_id}")
 async def delete_module(module_id: str, user: dict = Depends(get_admin_user)):
-    """Remove a module"""
+    """Remove a module and its archive"""
     module = await db.modules.find_one({"id": module_id})
     if not module:
         raise HTTPException(status_code=404, detail="Module not found")
+    
+    # Remove archive file if exists
+    archive_path = module.get("archive_path", "")
+    if archive_path:
+        full_path = os.path.join(os.path.dirname(__file__), archive_path.lstrip("/"))
+        if os.path.exists(full_path):
+            os.remove(full_path)
     
     await db.modules.delete_one({"id": module_id})
     await log_action("module_deleted", user["id"], {"module": module.get("name", module_id)})
@@ -1495,6 +1539,7 @@ async def get_public_settings():
             "app_icon_url": "",
             "maintenance_mode": False,
             "maintenance_text": "",
+            "test_mode": True,
             "terms_text": "Условия использования сервиса...",
             "privacy_text": "Политика конфиденциальности...",
             "customer_rules_text": "Правила для пассажиров...",
@@ -1506,6 +1551,7 @@ async def get_public_settings():
         "app_icon_url": settings.get("app_icon_url", ""),
         "maintenance_mode": settings.get("maintenance_mode", False),
         "maintenance_text": settings.get("maintenance_text", ""),
+        "test_mode": settings.get("test_mode", True),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),
