@@ -308,32 +308,63 @@ main() {
     # Генерация JWT
     JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
     
-    # Виртуальное окружение
+    # Обязательно установить python3-venv (на Ubuntu 22+/24+ он не идёт по умолчанию)
+    echo -e "  ${ARROW} Проверка python3-venv..."
+    apt-get install -y python3-venv python3-dev >> "$LOG_FILE" 2>&1
+    
+    # Если старый venv сломан (нет pip/uvicorn) — пересоздать
+    if [ -d "venv" ] && [ ! -f "venv/bin/pip" ]; then
+        echo -e "  ${WARN} Старый venv повреждён — пересоздаём..."
+        rm -rf venv
+    fi
+    
+    # Создание виртуального окружения
     if [ ! -d "venv" ]; then
         echo -e "  ${ARROW} Создание виртуального окружения..."
         python3 -m venv venv >> "$LOG_FILE" 2>&1
-        if [ $? -ne 0 ]; then
-            echo -e "  ${WARN} venv не создан, пробуем установить python3-venv..."
-            apt-get install -y python3-venv >> "$LOG_FILE" 2>&1
-            python3 -m venv venv >> "$LOG_FILE" 2>&1
+        if [ ! -f "venv/bin/pip" ]; then
+            echo -e "  ${WARN} venv создан без pip, устанавливаем ensurepip..."
+            python3 -m ensurepip --upgrade >> "$LOG_FILE" 2>&1 || true
+            # Если ensurepip не помог — поставим pip вручную
+            if [ ! -f "venv/bin/pip" ]; then
+                echo -e "  ${ARROW} Скачиваем get-pip.py..."
+                curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py >> "$LOG_FILE" 2>&1
+                venv/bin/python3 /tmp/get-pip.py >> "$LOG_FILE" 2>&1
+            fi
         fi
-        echo -e "  ${OK} Виртуальное окружение"
+        echo -e "  ${OK} Виртуальное окружение создано"
     else
         echo -e "  ${OK} Виртуальное окружение (уже есть)"
     fi
     
+    # Проверка что pip работает
+    if [ ! -f "venv/bin/pip" ]; then
+        echo -e "  ${FAIL} pip не найден в venv!"
+        echo -e "  ${DIM}  Попробуйте: apt install python3-venv && rm -rf venv && bash install.sh${NC}"
+        exit 1
+    fi
+    
     # Зависимости Python
     echo -e "  ${ARROW} Установка Python-зависимостей..."
-    echo -e "  ${DIM}  (может занять 1-2 минуты)${NC}"
+    echo -e "  ${DIM}  (может занять 1-3 минуты)${NC}"
     
-    "${INSTALL_DIR}/backend/venv/bin/pip" install --upgrade pip >> "$LOG_FILE" 2>&1
-    "${INSTALL_DIR}/backend/venv/bin/pip" install -r requirements.txt >> "$LOG_FILE" 2>&1
+    venv/bin/pip install --upgrade pip >> "$LOG_FILE" 2>&1
+    venv/bin/pip install -r requirements.txt >> "$LOG_FILE" 2>&1
+    local pip_result=$?
     
-    if [ $? -eq 0 ]; then
+    # Проверка что uvicorn установился
+    if [ -f "venv/bin/uvicorn" ]; then
         echo -e "  ${OK} Python-зависимости установлены"
     else
-        echo -e "  ${WARN} Были ошибки при установке зависимостей"
-        echo -e "  ${DIM}  Подробности: ${LOG_FILE}${NC}"
+        echo -e "  ${FAIL} uvicorn не найден — зависимости не установились!"
+        echo -e "  ${DIM}  Попробуем ещё раз с подробным выводом:${NC}"
+        venv/bin/pip install uvicorn fastapi motor python-jose python-multipart passlib bcrypt 2>&1 | tail -5
+        if [ ! -f "venv/bin/uvicorn" ]; then
+            echo -e "  ${FAIL} Критическая ошибка. Подробности: ${LOG_FILE}"
+            echo -e "  ${DIM}  Ручное решение: cd ${INSTALL_DIR}/backend && source venv/bin/activate && pip install -r requirements.txt${NC}"
+            exit 1
+        fi
+        echo -e "  ${OK} Python-зависимости установлены (со второй попытки)"
     fi
     
     # .env файл
@@ -425,17 +456,52 @@ SVCEOF
     
     systemctl daemon-reload >> "$LOG_FILE" 2>&1
     systemctl stop taxi-backend >> "$LOG_FILE" 2>&1
+    sleep 1
     systemctl start taxi-backend >> "$LOG_FILE" 2>&1
     systemctl enable taxi-backend >> "$LOG_FILE" 2>&1
     
-    sleep 3
+    sleep 4
     
     if systemctl is-active --quiet taxi-backend; then
         echo -e "  ${OK} Бэкенд запущен"
     else
         echo -e "  ${FAIL} Бэкенд не запустился"
-        echo -e "  ${DIM}  Проверьте: journalctl -u taxi-backend -n 20${NC}"
-        journalctl -u taxi-backend -n 5 --no-pager 2>/dev/null || true
+        echo -e "  ${DIM}  Проверяем причину...${NC}"
+        
+        # Проверяем что uvicorn вообще существует
+        if [ ! -f "${INSTALL_DIR}/backend/venv/bin/uvicorn" ]; then
+            echo -e "  ${FAIL} uvicorn не найден в ${INSTALL_DIR}/backend/venv/bin/"
+            echo -e "  ${DIM}  Решение: cd ${INSTALL_DIR}/backend && venv/bin/pip install uvicorn && systemctl restart taxi-backend${NC}"
+        else
+            echo -e "  ${DIM}  uvicorn найден: $(ls -la ${INSTALL_DIR}/backend/venv/bin/uvicorn)${NC}"
+        fi
+        
+        echo ""
+        echo -e "  ${DIM}  Последние логи:${NC}"
+        journalctl -u taxi-backend -n 10 --no-pager 2>/dev/null || true
+        echo ""
+        
+        # Попробуем запустить вручную для диагностики
+        echo -e "  ${ARROW} Пробуем запустить напрямую для диагностики..."
+        cd "${INSTALL_DIR}/backend"
+        timeout 5 venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001 >> "$LOG_FILE" 2>&1 &
+        local test_pid=$!
+        sleep 3
+        
+        if curl -s --max-time 3 http://localhost:8001/api/settings/public | grep -q "app_name"; then
+            echo -e "  ${OK} API работает при ручном запуске!"
+            echo -e "  ${WARN} Проблема в systemd сервисе. Перезапускаем..."
+            kill $test_pid 2>/dev/null || true
+            wait $test_pid 2>/dev/null || true
+            sleep 1
+            systemctl restart taxi-backend >> "$LOG_FILE" 2>&1
+            sleep 3
+        else
+            kill $test_pid 2>/dev/null || true
+            wait $test_pid 2>/dev/null || true
+            echo -e "  ${FAIL} API не отвечает даже при ручном запуске"
+            echo -e "  ${DIM}  Подробности: ${LOG_FILE}${NC}"
+        fi
     fi
     
     # API проверка
@@ -449,9 +515,10 @@ SVCEOF
     # --- Инициализация настроек в БД ---
     echo -e "  ${ARROW} Инициализация базы данных..."
     
-    "${INSTALL_DIR}/backend/venv/bin/python3" << 'PYEOF'
-from pymongo import MongoClient
+    cd "${INSTALL_DIR}/backend"
+    MONGO_URL="${MONGO_URL}" DB_NAME="${DB_NAME}" venv/bin/python3 << 'PYEOF'
 import os
+from pymongo import MongoClient
 
 mongo_url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
 db_name = os.environ.get("DB_NAME", "taxi_production")
