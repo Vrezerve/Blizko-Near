@@ -41,6 +41,7 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets
 - [x] Подробный гайд Timeweb — терминал (/app/docs/timeweb_guide.md)
 - [x] Подробный гайд Timeweb — ISPmanager 6 (12 шагов)
 - [x] Автоинсталятор install.sh + инструкция по использованию (шаги А–Е)
+- [x] **PHP Веб-Инсталятор install.php** — визуальный пошаговый установщик через браузер (7 шагов: проверка системы, установка зависимостей, настройка, сборка, nginx + SSL, финальная проверка)
 
 ## Бэклог
 ### P1
@@ -50,4 +51,5 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets
 
 ### P2
 - [ ] Предоплатный баланс водителей
-- [ ] Интеграция с реальными картами
+- [ ] Интеграция с реальными картами (Yandex/Google/2GIS)
+- [ ] Рефакторинг server.py на отдельные роутеры
