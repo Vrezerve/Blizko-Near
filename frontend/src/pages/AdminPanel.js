@@ -6,7 +6,8 @@ import {
   LogOut, Search, Check, X, Edit2, Loader2, Eye, 
   ChevronRight, AlertTriangle, MessageSquare, Key, Map,
   MapPin, Navigation, Phone, Clock, Smartphone, Ban, Unlock,
-  Upload, Image
+  Upload, Image, Package, Download, RefreshCw, Trash2, Power,
+  ToggleLeft, ToggleRight, Archive, Plus
 } from 'lucide-react';
 
 // Admin Map Component showing online drivers
@@ -222,6 +223,12 @@ const AdminPanel = () => {
   const [editForm, setEditForm] = useState({});
   const [selectedOrderRoute, setSelectedOrderRoute] = useState(null);
   const [iconUploading, setIconUploading] = useState(false);
+  const [modules, setModules] = useState([]);
+  const [updates, setUpdates] = useState([]);
+  const [updateUploading, setUpdateUploading] = useState(false);
+  const [updateResult, setUpdateResult] = useState(null);
+  const [newModule, setNewModule] = useState({ name: '', description: '', version: '1.0' });
+  const [showAddModule, setShowAddModule] = useState(false);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -275,6 +282,14 @@ const AdminPanel = () => {
         case 'devices':
           const devicesData = await api('GET', '/admin/blocked-devices');
           setBlockedDevices(devicesData);
+          break;
+        case 'updates':
+          const [modulesData, updatesData] = await Promise.all([
+            api('GET', '/admin/modules'),
+            api('GET', '/admin/updates')
+          ]);
+          setModules(modulesData);
+          setUpdates(updatesData);
           break;
         default:
           break;
@@ -386,6 +401,73 @@ const AdminPanel = () => {
   const handleLogout = async () => {
     await logout();
     navigate('/');
+  };
+
+  // ── Modules & Updates ─────────────
+  const handleAddModule = async () => {
+    if (!newModule.name.trim()) return;
+    try {
+      await api('POST', '/admin/modules', newModule);
+      setNewModule({ name: '', description: '', version: '1.0' });
+      setShowAddModule(false);
+      loadData();
+    } catch (error) {
+      alert('Ошибка добавления модуля');
+    }
+  };
+
+  const handleToggleModule = async (moduleId) => {
+    try {
+      await api('POST', `/admin/modules/${moduleId}/toggle`);
+      loadData();
+    } catch (error) {
+      alert('Ошибка');
+    }
+  };
+
+  const handleDeleteModule = async (moduleId) => {
+    if (!window.confirm('Удалить модуль?')) return;
+    try {
+      await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/modules/${moduleId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      loadData();
+    } catch (error) {
+      alert('Ошибка удаления');
+    }
+  };
+
+  const handleUpdateUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.zip')) {
+      alert('Допустим только формат ZIP');
+      return;
+    }
+    setUpdateUploading(true);
+    setUpdateResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/update/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.success) {
+        setUpdateResult({ type: 'success', message: data.message, parts: data.parts_updated, files: data.files_count });
+        loadData();
+      } else {
+        setUpdateResult({ type: 'error', message: data.detail || 'Ошибка' });
+      }
+    } catch (error) {
+      setUpdateResult({ type: 'error', message: 'Ошибка загрузки обновления' });
+    } finally {
+      setUpdateUploading(false);
+      e.target.value = '';
+    }
   };
 
   const viewUserDetails = async (userId) => {
@@ -1268,6 +1350,214 @@ const AdminPanel = () => {
     </div>
   );
 
+  const renderUpdates = () => (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-900">Обновления и модули</h2>
+
+      {/* Upload Update */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <RefreshCw className="w-5 h-5 text-blue-500" />
+          Загрузить обновление
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">
+          Загрузите ZIP-архив с обновлением. Архив может содержать папки <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">backend/</code> и/или <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">frontend/</code>
+        </p>
+
+        <label 
+          data-testid="update-upload-btn"
+          className={`flex flex-col items-center gap-3 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+            updateUploading ? 'border-blue-300 bg-blue-50' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
+          }`}
+        >
+          {updateUploading ? (
+            <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+          ) : (
+            <Archive className="w-8 h-8 text-slate-400" />
+          )}
+          <span className="text-sm text-slate-600 font-medium">
+            {updateUploading ? 'Загрузка и применение...' : 'Нажмите для выбора ZIP-архива'}
+          </span>
+          <span className="text-xs text-slate-400">Макс. 100 МБ</span>
+          <input
+            type="file"
+            accept=".zip"
+            onChange={handleUpdateUpload}
+            className="hidden"
+            disabled={updateUploading}
+          />
+        </label>
+
+        {updateResult && (
+          <div className={`mt-4 p-4 rounded-xl ${updateResult.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            <p className={`font-medium text-sm ${updateResult.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
+              {updateResult.type === 'success' ? 'Обновление применено!' : 'Ошибка'}
+            </p>
+            <p className={`text-sm mt-1 ${updateResult.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {updateResult.message}
+            </p>
+            {updateResult.parts && updateResult.parts.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {updateResult.parts.map((part, i) => (
+                  <span key={i} className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">{part}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+          <p className="text-xs font-medium text-slate-600 mb-2">Структура ZIP-архива:</p>
+          <pre className="text-xs text-slate-500 font-mono leading-relaxed">{`update.zip
+├── backend/          (файлы бэкенда)
+│   ├── server.py
+│   └── requirements.txt
+└── frontend/         (файлы фронтенда)
+    ├── build/        (готовая сборка)
+    └── src/          (или исходники)`}</pre>
+        </div>
+      </div>
+
+      {/* Modules */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <Package className="w-5 h-5 text-purple-500" />
+            Модули
+          </h3>
+          <button 
+            data-testid="add-module-btn"
+            onClick={() => setShowAddModule(!showAddModule)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Добавить модуль
+          </button>
+        </div>
+
+        {showAddModule && (
+          <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <input
+                data-testid="module-name-input"
+                type="text"
+                placeholder="Название модуля"
+                value={newModule.name}
+                onChange={(e) => setNewModule({...newModule, name: e.target.value})}
+                className="input-field"
+              />
+              <input
+                type="text"
+                placeholder="Описание"
+                value={newModule.description}
+                onChange={(e) => setNewModule({...newModule, description: e.target.value})}
+                className="input-field"
+              />
+              <input
+                type="text"
+                placeholder="Версия"
+                value={newModule.version}
+                onChange={(e) => setNewModule({...newModule, version: e.target.value})}
+                className="input-field"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                data-testid="save-module-btn"
+                onClick={handleAddModule}
+                disabled={!newModule.name.trim()}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50"
+              >
+                Сохранить
+              </button>
+              <button onClick={() => setShowAddModule(false)} className="px-4 py-2 text-slate-500 text-sm hover:text-slate-700">
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+
+        {modules.length > 0 ? (
+          <div className="space-y-3">
+            {modules.map(mod => (
+              <div key={mod.id} className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${mod.enabled ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${mod.enabled ? 'bg-purple-100' : 'bg-slate-200'}`}>
+                    <Package className={`w-5 h-5 ${mod.enabled ? 'text-purple-600' : 'text-slate-400'}`} />
+                  </div>
+                  <div>
+                    <p className={`font-medium ${mod.enabled ? 'text-slate-900' : 'text-slate-400'}`}>{mod.name}</p>
+                    <p className="text-xs text-slate-400">{mod.description || 'Без описания'} &middot; v{mod.version}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    data-testid={`toggle-module-${mod.id}`}
+                    onClick={() => handleToggleModule(mod.id)}
+                    className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                    title={mod.enabled ? 'Отключить' : 'Включить'}
+                  >
+                    {mod.enabled ? <ToggleRight className="w-6 h-6 text-green-500" /> : <ToggleLeft className="w-6 h-6 text-slate-400" />}
+                  </button>
+                  <button
+                    data-testid={`delete-module-${mod.id}`}
+                    onClick={() => handleDeleteModule(mod.id)}
+                    className="p-2 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-500 transition-colors"
+                    title="Удалить"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-400">
+            <Package className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+            <p>Модули не установлены</p>
+            <p className="text-xs mt-1">Нажмите «Добавить модуль» для начала</p>
+          </div>
+        )}
+      </div>
+
+      {/* Update history */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <Clock className="w-5 h-5 text-slate-400" />
+          История обновлений
+        </h3>
+
+        {updates.length > 0 ? (
+          <div className="space-y-3">
+            {updates.map(upd => (
+              <div key={upd.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Download className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-900 text-sm">{upd.filename}</p>
+                    <p className="text-xs text-slate-400">
+                      {upd.files_count} файлов &middot; {upd.parts?.join(', ') || '—'}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs text-slate-400">
+                  {new Date(upd.applied_at).toLocaleString('ru-RU')}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-400">
+            <RefreshCw className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+            <p>Обновлений пока не было</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const navItems = [
     { id: 'dashboard', icon: BarChart3, label: 'Обзор' },
     { id: 'map', icon: Map, label: 'Карта' },
@@ -1275,6 +1565,7 @@ const AdminPanel = () => {
     { id: 'drivers', icon: Car, label: 'Водители' },
     { id: 'orders', icon: ClipboardList, label: 'Заказы' },
     { id: 'devices', icon: Smartphone, label: 'Устройства' },
+    { id: 'updates', icon: Package, label: 'Обновления' },
     { id: 'logs', icon: MessageSquare, label: 'Логи' },
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
@@ -1338,6 +1629,7 @@ const AdminPanel = () => {
               {activeTab === 'logs' && renderLogs()}
               {activeTab === 'notifications' && renderNotifications()}
               {activeTab === 'settings' && renderSettings()}
+              {activeTab === 'updates' && renderUpdates()}
             </>
           )}
         </div>

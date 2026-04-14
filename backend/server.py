@@ -1307,6 +1307,159 @@ async def admin_unblock_device(device_id: str, user: dict = Depends(get_admin_us
     await log_action("device_unblocked", None, {"device_id": device_id, "unblocked_by": user["id"]})
     return {"success": True}
 
+# ============ MODULES & UPDATES ROUTES ============
+
+@admin_router.get("/modules")
+async def get_modules(user: dict = Depends(get_admin_user)):
+    """Get list of installed modules"""
+    modules = []
+    async for m in db.modules.find({}, {"_id": 0}):
+        modules.append(m)
+    return modules
+
+@admin_router.post("/modules")
+async def install_module(data: dict, user: dict = Depends(get_admin_user)):
+    """Register a new module"""
+    module_id = str(uuid.uuid4())[:8]
+    module = {
+        "id": module_id,
+        "name": data.get("name", ""),
+        "description": data.get("description", ""),
+        "version": data.get("version", "1.0"),
+        "enabled": True,
+        "installed_at": datetime.now(timezone.utc).isoformat(),
+        "installed_by": user["id"]
+    }
+    await db.modules.insert_one(module)
+    await log_action("module_installed", user["id"], {"module": module["name"]})
+    return {"success": True, "module": {k: v for k, v in module.items() if k != "_id"}}
+
+@admin_router.post("/modules/{module_id}/toggle")
+async def toggle_module(module_id: str, user: dict = Depends(get_admin_user)):
+    """Enable or disable a module"""
+    module = await db.modules.find_one({"id": module_id})
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+    
+    new_state = not module.get("enabled", True)
+    await db.modules.update_one({"id": module_id}, {"$set": {"enabled": new_state}})
+    await log_action("module_toggled", user["id"], {"module": module["name"], "enabled": new_state})
+    return {"success": True, "enabled": new_state}
+
+@admin_router.delete("/modules/{module_id}")
+async def delete_module(module_id: str, user: dict = Depends(get_admin_user)):
+    """Remove a module"""
+    module = await db.modules.find_one({"id": module_id})
+    if not module:
+        raise HTTPException(status_code=404, detail="Module not found")
+    
+    await db.modules.delete_one({"id": module_id})
+    await log_action("module_deleted", user["id"], {"module": module.get("name", module_id)})
+    return {"success": True}
+
+@admin_router.post("/update/upload")
+async def upload_update(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload update archive (ZIP) and apply it"""
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Допустим только формат ZIP")
+    
+    if file.size and file.size > 100 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 100 МБ")
+    
+    # Save archive
+    update_dir = ROOT_DIR / "updates"
+    update_dir.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    archive_path = update_dir / f"update_{timestamp}.zip"
+    
+    content = await file.read()
+    with open(archive_path, "wb") as f:
+        f.write(content)
+    
+    # Unzip to temp dir and inspect contents
+    import zipfile
+    extract_dir = update_dir / f"update_{timestamp}"
+    
+    try:
+        with zipfile.ZipFile(str(archive_path), 'r') as zf:
+            file_list = zf.namelist()
+            zf.extractall(str(extract_dir))
+    except zipfile.BadZipFile:
+        archive_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Повреждённый ZIP-архив")
+    
+    # Determine what to update
+    updated_parts = []
+    
+    # Check for backend files
+    backend_src = extract_dir / "backend"
+    if backend_src.is_dir():
+        for item in backend_src.iterdir():
+            target = ROOT_DIR / item.name
+            if item.is_file():
+                shutil.copy2(str(item), str(target))
+            elif item.is_dir():
+                if target.exists():
+                    shutil.rmtree(str(target))
+                shutil.copytree(str(item), str(target))
+        updated_parts.append("backend")
+    
+    # Check for frontend/build (pre-built)
+    frontend_build_src = extract_dir / "frontend" / "build"
+    if frontend_build_src.is_dir():
+        frontend_build_target = ROOT_DIR.parent / "frontend" / "build"
+        if frontend_build_target.exists():
+            shutil.rmtree(str(frontend_build_target))
+        shutil.copytree(str(frontend_build_src), str(frontend_build_target))
+        updated_parts.append("frontend (build)")
+    
+    # Check for frontend source (needs rebuild on server)
+    frontend_src = extract_dir / "frontend" / "src"
+    if frontend_src.is_dir() and not frontend_build_src.is_dir():
+        frontend_target = ROOT_DIR.parent / "frontend"
+        for item in (extract_dir / "frontend").iterdir():
+            target = frontend_target / item.name
+            if item.is_file():
+                shutil.copy2(str(item), str(target))
+            elif item.is_dir():
+                if target.exists():
+                    shutil.rmtree(str(target))
+                shutil.copytree(str(item), str(target))
+        updated_parts.append("frontend (source — требуется yarn build)")
+    
+    # Save update record
+    update_record = {
+        "id": f"upd_{timestamp}",
+        "filename": file.filename,
+        "size": len(content),
+        "parts": updated_parts,
+        "files_count": len(file_list),
+        "applied_at": datetime.now(timezone.utc).isoformat(),
+        "applied_by": user["id"]
+    }
+    await db.updates.insert_one(update_record)
+    
+    # Cleanup extracted files
+    shutil.rmtree(str(extract_dir), ignore_errors=True)
+    
+    await log_action("update_applied", user["id"], {"filename": file.filename, "parts": updated_parts})
+    
+    return {
+        "success": True,
+        "parts_updated": updated_parts,
+        "files_count": len(file_list),
+        "message": f"Обновление применено: {', '.join(updated_parts) if updated_parts else 'файлы загружены'}"
+    }
+
+@admin_router.get("/updates")
+async def get_updates(user: dict = Depends(get_admin_user)):
+    """Get history of applied updates"""
+    updates = []
+    async for u in db.updates.find({}, {"_id": 0}).sort("applied_at", -1).limit(50):
+        updates.append(u)
+    return updates
+
 # ============ SETTINGS ROUTES ============
 
 @settings_router.get("/")

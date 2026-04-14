@@ -78,6 +78,15 @@ const DriverMain = () => {
   const [editName, setEditName] = useState('');
   
   const wsRef = useRef(null);
+  const isReadyRef = useRef(false);
+
+  // Sync isReady with user on mount only
+  useEffect(() => {
+    if (user?.is_online !== undefined) {
+      setIsReady(user.is_online);
+      isReadyRef.current = user.is_online;
+    }
+  }, [user?.is_online]);
 
   useEffect(() => {
     if (!user || user.role !== 'driver') {
@@ -89,8 +98,6 @@ const DriverMain = () => {
       navigate('/auth/driver');
       return;
     }
-
-    setIsReady(user.is_online || false);
 
     // Get location and start tracking
     let locationWatchId = null;
@@ -164,7 +171,7 @@ const DriverMain = () => {
     
     wsRef.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === 'new_order' && isReady && !currentOrder) {
+      if (data.type === 'new_order' && isReadyRef.current) {
         setAvailableOrders(prev => [data.order, ...prev.filter(o => o.id !== data.order.id)]);
       } else if (data.type === 'order_taken') {
         setAvailableOrders(prev => prev.filter(o => o.id !== data.order_id));
@@ -181,7 +188,7 @@ const DriverMain = () => {
         navigator.geolocation.clearWatch(locationWatchId);
       }
     };
-  }, [user, navigate, api, isReady, currentOrder]);
+  }, [user?.id, user?.role, user?.is_activated, navigate, api]);
 
   useEffect(() => {
     if (completeCooldown > 0) {
@@ -210,11 +217,16 @@ const DriverMain = () => {
 
     try {
       const result = await api('POST', '/drivers/toggle-ready');
-      setIsReady(result.is_online);
+      const newStatus = result.is_online;
+      setIsReady(newStatus);
+      isReadyRef.current = newStatus;
       
-      if (!result.is_online) {
+      if (!newStatus) {
         setAvailableOrders([]);
       }
+      
+      // Refresh user data in context so is_online stays in sync
+      await refreshUser();
     } catch (error) {
       setError(error.response?.data?.detail || 'Ошибка');
     } finally {
@@ -447,12 +459,12 @@ const DriverMain = () => {
             data-testid="toggle-ready-btn"
             onClick={handleToggleReady}
             disabled={loading || !agreedRules}
-            className="btn-primary"
+            className={isReady ? "w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 transition-colors" : "btn-primary"}
           >
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
               <>
                 <Power className="w-5 h-5" />
-                Выйти на линию
+                {isReady ? 'Уйти с линии' : 'Выйти на линию'}
               </>
             )}
           </button>
