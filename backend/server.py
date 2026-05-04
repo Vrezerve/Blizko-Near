@@ -212,6 +212,8 @@ class SettingsUpdate(BaseModel):
     maintenance_mode: bool = False
     maintenance_text: Optional[str] = None
     test_mode: Optional[bool] = None
+    system_logging: Optional[bool] = None
+    log_level: Optional[str] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -299,6 +301,29 @@ async def log_action(action: str, user_id: str = None, details: dict = None):
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
     await db.logs.insert_one(log_entry)
+
+async def system_log(level: str, source: str, message: str, details: dict = None):
+    """Write system-level log with level: error, warning, info, debug"""
+    # Check if logging is enabled
+    settings = await db.settings.find_one({"id": "main"})
+    if settings and not settings.get("system_logging", True):
+        return
+    
+    # Check log level threshold
+    levels = {"debug": 0, "info": 1, "warning": 2, "error": 3}
+    min_level = settings.get("log_level", "info") if settings else "info"
+    if levels.get(level, 1) < levels.get(min_level, 1):
+        return
+    
+    entry = {
+        "id": str(uuid.uuid4()),
+        "level": level,
+        "source": source,
+        "message": message,
+        "details": details or {},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    await db.system_logs.insert_one(entry)
 
 async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push"):
     """Mock notification - logs to DB for admin review"""
@@ -1253,6 +1278,24 @@ async def get_logs(action: Optional[str] = None, limit: int = 100, user: dict = 
     logs = await db.logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(limit)
     return logs
 
+@admin_router.get("/system-logs")
+async def get_system_logs(level: Optional[str] = None, source: Optional[str] = None, limit: int = 200, user: dict = Depends(get_admin_user)):
+    """Get system logs with optional level/source filter"""
+    query = {}
+    if level:
+        query["level"] = level
+    if source:
+        query["source"] = source
+    logs = await db.system_logs.find(query, {"_id": 0}).sort("timestamp", -1).to_list(limit)
+    return logs
+
+@admin_router.delete("/system-logs")
+async def clear_system_logs(user: dict = Depends(get_admin_user)):
+    """Clear all system logs"""
+    result = await db.system_logs.delete_many({})
+    await system_log("info", "admin", f"Системные логи очищены ({result.deleted_count} записей)")
+    return {"success": True, "deleted": result.deleted_count}
+
 @admin_router.get("/notifications")
 async def get_notifications(notification_type: Optional[str] = None, user: dict = Depends(get_admin_user)):
     query = {} if not notification_type else {"type": notification_type}
@@ -1431,6 +1474,7 @@ async def upload_update(file: UploadFile = File(...), user: dict = Depends(get_a
             zf.extractall(str(extract_dir))
     except zipfile.BadZipFile:
         archive_path.unlink(missing_ok=True)
+        await system_log("error", "update", f"Повреждённый ZIP: {file.filename}")
         raise HTTPException(status_code=400, detail="Повреждённый ZIP-архив")
     
     # Determine what to update
@@ -1488,6 +1532,7 @@ async def upload_update(file: UploadFile = File(...), user: dict = Depends(get_a
     shutil.rmtree(str(extract_dir), ignore_errors=True)
     
     await log_action("update_applied", user["id"], {"filename": file.filename, "parts": updated_parts})
+    await system_log("info", "update", f"Обновление применено: {file.filename}", {"parts": updated_parts, "files": len(file_list)})
     
     return {
         "success": True,
@@ -1696,6 +1741,7 @@ async def startup():
         f.write("## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
     
     logger.info("Taxi WebToApp API started")
+    await system_log("info", "system", "Сервер запущен", {"version": "2.0"})
 
 @app.on_event("shutdown")
 async def shutdown():

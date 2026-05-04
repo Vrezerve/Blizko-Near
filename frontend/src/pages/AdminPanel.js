@@ -230,6 +230,8 @@ const AdminPanel = () => {
   const [newModule, setNewModule] = useState({ name: '', description: '', version: '1.0' });
   const [showAddModule, setShowAddModule] = useState(false);
   const [moduleUploading, setModuleUploading] = useState(null);
+  const [systemLogs, setSystemLogs] = useState([]);
+  const [sysLogFilter, setSysLogFilter] = useState('all');
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -291,6 +293,10 @@ const AdminPanel = () => {
           ]);
           setModules(modulesData);
           setUpdates(updatesData);
+          break;
+        case 'syslog':
+          const sysLogsData = await api('GET', '/admin/system-logs?limit=300');
+          setSystemLogs(sysLogsData);
           break;
         default:
           break;
@@ -953,6 +959,159 @@ const AdminPanel = () => {
       </div>
     </div>
   );
+
+  const handleClearSystemLogs = async () => {
+    if (!window.confirm('Очистить все системные логи?')) return;
+    try {
+      await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/system-logs`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      setSystemLogs([]);
+    } catch (error) {
+      alert('Ошибка очистки');
+    }
+  };
+
+  const renderSystemLogs = () => {
+    const filteredLogs = sysLogFilter === 'all' 
+      ? systemLogs 
+      : systemLogs.filter(l => l.level === sysLogFilter);
+
+    const levelColors = {
+      error: 'bg-red-100 text-red-700',
+      warning: 'bg-yellow-100 text-yellow-700',
+      info: 'bg-blue-100 text-blue-700',
+      debug: 'bg-slate-100 text-slate-600'
+    };
+
+    const levelLabels = {
+      error: 'Ошибка',
+      warning: 'Предупр.',
+      info: 'Инфо',
+      debug: 'Отладка'
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <h2 className="text-2xl font-bold text-slate-900">Системные логи</h2>
+          <div className="flex items-center gap-3">
+            <select
+              value={sysLogFilter}
+              onChange={(e) => setSysLogFilter(e.target.value)}
+              className="px-4 py-2 border border-slate-200 rounded-lg text-sm"
+              data-testid="syslog-filter"
+            >
+              <option value="all">Все уровни</option>
+              <option value="error">Ошибки</option>
+              <option value="warning">Предупреждения</option>
+              <option value="info">Информация</option>
+              <option value="debug">Отладка</option>
+            </select>
+            <button
+              onClick={loadData}
+              className="px-3 py-2 bg-slate-100 rounded-lg text-sm text-slate-600 hover:bg-slate-200"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleClearSystemLogs}
+              className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100"
+              data-testid="clear-syslog-btn"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Logging settings */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.system_logging !== false}
+                  onChange={(e) => {
+                    const newSettings = {...settings, system_logging: e.target.checked};
+                    setSettings(newSettings);
+                    api('POST', '/settings/', newSettings);
+                  }}
+                  className="checkbox-custom"
+                  data-testid="syslog-enabled-toggle"
+                />
+                <span className="text-sm text-slate-700">Логирование включено</span>
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">Мин. уровень:</span>
+              <select
+                value={settings.log_level || 'info'}
+                onChange={(e) => {
+                  const newSettings = {...settings, log_level: e.target.value};
+                  setSettings(newSettings);
+                  api('POST', '/settings/', newSettings);
+                }}
+                className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm"
+                data-testid="syslog-level-select"
+              >
+                <option value="debug">Debug (всё)</option>
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error (только ошибки)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="max-h-[600px] overflow-y-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
+                <tr>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Время</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Уровень</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Источник</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Сообщение</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Детали</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLogs.map((log) => (
+                  <tr key={log.id} className="border-b border-slate-50">
+                    <td className="p-4 text-sm text-slate-500 whitespace-nowrap">
+                      {new Date(log.timestamp).toLocaleString('ru-RU')}
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${levelColors[log.level] || 'bg-slate-100 text-slate-600'}`}>
+                        {levelLabels[log.level] || log.level}
+                      </span>
+                    </td>
+                    <td className="p-4 text-sm text-slate-600 font-mono">{log.source}</td>
+                    <td className="p-4 text-sm text-slate-900">{log.message}</td>
+                    <td className="p-4 text-sm text-slate-500 max-w-[200px] truncate">
+                      {log.details && Object.keys(log.details).length > 0 ? JSON.stringify(log.details) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {filteredLogs.length === 0 && (
+            <div className="p-8 text-center text-slate-500">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+              <p>Нет системных логов</p>
+              <p className="text-xs mt-1 text-slate-400">Логи появятся при запуске сервера, обновлениях и ошибках</p>
+            </div>
+          )}
+        </div>
+        
+        <p className="text-xs text-slate-400">Всего записей: {filteredLogs.length} из {systemLogs.length}</p>
+      </div>
+    );
+  };
 
   const renderNotifications = () => (
     <div className="space-y-6">
@@ -1672,6 +1831,7 @@ const AdminPanel = () => {
     { id: 'devices', icon: Smartphone, label: 'Устройства' },
     { id: 'updates', icon: Package, label: 'Обновления' },
     { id: 'logs', icon: MessageSquare, label: 'Логи' },
+    { id: 'syslog', icon: AlertTriangle, label: 'Системные' },
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
   ];
@@ -1732,6 +1892,7 @@ const AdminPanel = () => {
               {activeTab === 'orders' && renderOrders()}
               {activeTab === 'devices' && renderBlockedDevices()}
               {activeTab === 'logs' && renderLogs()}
+              {activeTab === 'syslog' && renderSystemLogs()}
               {activeTab === 'notifications' && renderNotifications()}
               {activeTab === 'settings' && renderSettings()}
               {activeTab === 'updates' && renderUpdates()}
