@@ -9,9 +9,28 @@ import {
   Upload, Image, Package, Download, RefreshCw, Trash2, Power,
   ToggleLeft, ToggleRight, Archive, Plus
 } from 'lucide-react';
+import YandexMap from '../components/YandexMap';
 
 // Admin Map Component showing online drivers
-const AdminMap = ({ drivers, onDriverClick }) => {
+const AdminMap = ({ drivers, onDriverClick, apiKey }) => {
+  if (apiKey) {
+    const markers = drivers.map(d => ({
+      lat: d.last_location?.lat || (55.75 + (Math.random() - 0.5) * 0.05),
+      lng: d.last_location?.lng || (37.57 + (Math.random() - 0.5) * 0.05),
+      name: d.name || 'Водитель',
+      info: `${d.car_model || ''} ${d.car_number || ''}`,
+      busy: d.is_busy
+    }));
+    return (
+      <div className="relative w-full h-96 rounded-xl overflow-hidden">
+        <YandexMap apiKey={apiKey} markers={markers} zoom={12} />
+        <div className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-sm z-10">
+          <p className="font-medium text-slate-900">Водители онлайн: {drivers.length}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       className="relative w-full h-96 rounded-xl overflow-hidden bg-slate-100"
@@ -636,6 +655,7 @@ const AdminPanel = () => {
         <AdminMap 
           drivers={onlineDrivers} 
           onDriverClick={(driver) => viewUserDetails(driver.id)}
+          apiKey={settings?.yandex_map_api_key}
         />
       </div>
     </div>
@@ -649,6 +669,7 @@ const AdminPanel = () => {
         <AdminMap 
           drivers={onlineDrivers} 
           onDriverClick={(driver) => viewUserDetails(driver.id)}
+          apiKey={settings?.yandex_map_api_key}
         />
       </div>
       

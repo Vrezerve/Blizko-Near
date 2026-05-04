@@ -45,15 +45,30 @@ const YandexMap = ({
     if (!ymapsLoaded || !mapRef.current || mapInstanceRef.current) return;
 
     const ymaps = window.ymaps;
+    const isMobile = window.innerWidth < 768;
+    
     const map = new ymaps.Map(mapRef.current, {
       center: userLocation ? [userLocation.lat, userLocation.lng] : center,
       zoom: zoom,
       controls: ['zoomControl', 'geolocationControl']
+    }, {
+      // Allow page scroll on mobile - disable drag by default
+      suppressMapOpenBlock: true
     });
+
+    // On mobile: disable drag so page scrolls, enable multiTouch for pinch-zoom
+    if (isMobile) {
+      map.behaviors.disable('drag');
+      map.behaviors.enable('multiTouch');
+    }
 
     map.events.add('click', (e) => {
       const coords = e.get('coords');
       if (onMapClick) onMapClick({ lat: coords[0], lng: coords[1] });
+      // Enable drag after first click on mobile (user interacted with map)
+      if (isMobile) {
+        map.behaviors.enable('drag');
+      }
     });
 
     mapInstanceRef.current = map;
