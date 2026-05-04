@@ -1371,6 +1371,39 @@ const AdminPanel = () => {
           </div>
         </div>
 
+        {/* Order Settings */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Настройки заказов</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Опции ETA для водителя (через запятую, в минутах)</label>
+              <input
+                type="text"
+                data-testid="eta-options-input"
+                value={settings.eta_options || '1,2,3,5'}
+                onChange={(e) => setSettings({...settings, eta_options: e.target.value})}
+                className="input-field"
+                placeholder="1,2,3,5"
+              />
+              <p className="text-xs text-slate-400 mt-1">Водитель выберет одну из опций при принятии заказа</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Иконка пина на карте (URL)</label>
+              <input
+                type="text"
+                data-testid="custom-pin-input"
+                value={settings.custom_pin_url || ''}
+                onChange={(e) => setSettings({...settings, custom_pin_url: e.target.value})}
+                className="input-field"
+                placeholder="https://example.com/pin.png (32x32 px)"
+              />
+              <p className="text-xs text-slate-400 mt-1">Кастомная иконка точки подачи на карте (оставьте пустым для стандартной)</p>
+            </div>
+          </div>
+        </div>
+
         {/* SMTP */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">SMTP (Email)</h3>

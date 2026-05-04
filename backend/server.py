@@ -214,6 +214,8 @@ class SettingsUpdate(BaseModel):
     test_mode: Optional[bool] = None
     system_logging: Optional[bool] = None
     log_level: Optional[str] = None
+    custom_pin_url: Optional[str] = None
+    eta_options: Optional[str] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -940,7 +942,7 @@ async def get_active_orders(user: dict = Depends(get_current_user)):
     return None
 
 @orders_router.post("/accept/{order_id}")
-async def accept_order(order_id: str, user: dict = Depends(get_current_user)):
+async def accept_order(order_id: str, data: dict = None, user: dict = Depends(get_current_user)):
     if user["role"] != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can accept orders")
     
@@ -958,18 +960,27 @@ async def accept_order(order_id: str, user: dict = Depends(get_current_user)):
     if balance <= min_balance:
         raise HTTPException(status_code=400, detail="Insufficient balance")
     
+    # Get ETA from request body
+    eta_minutes = None
+    if data and isinstance(data, dict):
+        eta_minutes = data.get("eta_minutes")
+    
     # Try to accept order
+    update_fields = {
+        "status": "accepted",
+        "driver_id": user["id"],
+        "driver_name": user.get("name"),
+        "driver_phone": user["phone"],
+        "driver_car": user.get("car_model"),
+        "driver_car_number": user.get("car_number"),
+        "accepted_at": datetime.now(timezone.utc).isoformat()
+    }
+    if eta_minutes:
+        update_fields["eta_minutes"] = eta_minutes
+    
     result = await db.orders.find_one_and_update(
         {"id": order_id, "status": "pending"},
-        {"$set": {
-            "status": "accepted",
-            "driver_id": user["id"],
-            "driver_name": user.get("name"),
-            "driver_phone": user["phone"],
-            "driver_car": user.get("car_model"),
-            "driver_car_number": user.get("car_number"),
-            "accepted_at": datetime.now(timezone.utc).isoformat()
-        }},
+        {"$set": update_fields},
         return_document=True
     )
     
@@ -1644,6 +1655,8 @@ async def get_public_settings():
         "yandex_map_api_key": settings.get("yandex_map_api_key", ""),
         "google_map_api_key": settings.get("google_map_api_key", ""),
         "active_map_provider": settings.get("active_map_provider", "yandex"),
+        "custom_pin_url": settings.get("custom_pin_url", ""),
+        "eta_options": settings.get("eta_options", "1,2,3,5"),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),

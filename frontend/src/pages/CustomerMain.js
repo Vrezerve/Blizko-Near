@@ -170,6 +170,9 @@ const CustomerMain = () => {
   const [settings, setSettings] = useState(null);
   const [driverStats, setDriverStats] = useState({ online: 0, busy: 0, available: 0 });
   const [userLocation, setUserLocation] = useState(null);
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestTimeoutRef = useRef(null);
   
   const [orderState, setOrderState] = useState('idle'); // idle, searching, found, completed
   const [currentOrder, setCurrentOrder] = useState(null);
@@ -362,6 +365,65 @@ const CustomerMain = () => {
       setOrderHistory(history);
     } catch (error) {
       console.error('Failed to fetch order history');
+    }
+  };
+
+  // Reverse geocode: coordinates → address
+  const reverseGeocode = async (lat, lng) => {
+    if (!settings?.yandex_map_api_key) return;
+    try {
+      const res = await axios.get(`https://geocode-maps.yandex.ru/1.x/?apikey=${settings.yandex_map_api_key}&geocode=${lng},${lat}&format=json&results=1`);
+      const feature = res.data?.response?.GeoObjectCollection?.featureMember?.[0]?.GeoObject;
+      if (feature) {
+        const addr = feature.metaDataProperty?.GeocoderMetaData?.text || feature.name;
+        setAddress(addr);
+        setHouseNumber('');
+      }
+    } catch (e) {}
+  };
+
+  // Forward geocode: text → suggestions
+  const fetchSuggestions = async (query) => {
+    if (!settings?.yandex_map_api_key || query.length < 3) {
+      setAddressSuggestions([]);
+      return;
+    }
+    try {
+      const res = await axios.get(`https://geocode-maps.yandex.ru/1.x/?apikey=${settings.yandex_map_api_key}&geocode=${encodeURIComponent(query)}&format=json&results=5`);
+      const items = res.data?.response?.GeoObjectCollection?.featureMember || [];
+      const suggestions = items.map(f => ({
+        name: f.GeoObject?.metaDataProperty?.GeocoderMetaData?.text || f.GeoObject?.name,
+        pos: f.GeoObject?.Point?.pos
+      }));
+      setAddressSuggestions(suggestions);
+      setShowSuggestions(suggestions.length > 0);
+    } catch (e) {
+      setAddressSuggestions([]);
+    }
+  };
+
+  const handleAddressInput = (value) => {
+    setAddress(value);
+    if (suggestTimeoutRef.current) clearTimeout(suggestTimeoutRef.current);
+    suggestTimeoutRef.current = setTimeout(() => fetchSuggestions(value), 400);
+  };
+
+  const selectSuggestion = (suggestion) => {
+    setAddress(suggestion.name);
+    setShowSuggestions(false);
+    setAddressSuggestions([]);
+    // Move map to selected address
+    if (suggestion.pos) {
+      const [lng, lat] = suggestion.pos.split(' ').map(Number);
+      setUserLocation({ lat, lng });
+    }
+  };
+
+  // Handle map click → reverse geocode
+  const handleMapClick = (coords) => {
+    if (orderState === 'idle') {
+      setUserLocation(coords);
+      reverseGeocode(coords.lat, coords.lng);
     }
   };
 
@@ -579,11 +641,11 @@ const CustomerMain = () => {
                 <CheckCircle className="w-5 h-5" />
                 <span className="font-medium">Водитель найден!</span>
               </div>
-              <p className="text-slate-500 text-sm">{currentOrder?.address}, д. {currentOrder?.house_number}</p>
+              <p className="text-slate-500 text-sm">{currentOrder?.address}{currentOrder?.house_number ? `, д. ${currentOrder.house_number}` : ''}</p>
             </div>
 
             {/* ETA Card */}
-            {etaMinutes && (
+            {(currentOrder?.eta_minutes || etaMinutes) && (
               <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -592,7 +654,7 @@ const CustomerMain = () => {
                     </div>
                     <div>
                       <p className="text-blue-100 text-sm">Прибудет через</p>
-                      <p className="text-2xl font-bold">~{etaMinutes} мин</p>
+                      <p className="text-2xl font-bold">~{currentOrder?.eta_minutes || etaMinutes} мин</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -628,24 +690,14 @@ const CustomerMain = () => {
               Позвонить водителю
             </a>
 
-            <div className="flex gap-3">
-              <button
-                data-testid="cancel-after-accept-btn"
-                onClick={handleCancelOrder}
-                disabled={loading}
-                className="flex-1 btn-secondary"
-              >
-                Отменить
-              </button>
-              <button
-                data-testid="report-problem-btn"
-                onClick={() => setShowProblem(true)}
-                className="flex-1 btn-danger"
-              >
-                <AlertTriangle className="w-5 h-5" />
-                Проблема
-              </button>
-            </div>
+            <button
+              data-testid="report-problem-btn"
+              onClick={() => setShowProblem(true)}
+              className="btn-danger w-full"
+            >
+              <AlertTriangle className="w-5 h-5" />
+              Сообщить о проблеме
+            </button>
           </div>
         );
 
@@ -672,29 +724,47 @@ const CustomerMain = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Адрес</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Адрес подачи</label>
                 <div className="relative">
-                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10" />
                   <input
                     data-testid="address-input"
                     type="text"
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => handleAddressInput(e.target.value)}
+                    onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     className="input-field !pl-14"
-                    placeholder="Город, улица"
+                    placeholder="Введите адрес или нажмите на карту"
                   />
+                  {showSuggestions && addressSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-30 max-h-48 overflow-y-auto">
+                      {addressSuggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onMouseDown={() => selectSuggestion(s)}
+                          className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center gap-2"
+                        >
+                          <MapPin className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <span className="truncate">{s.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+                <p className="text-xs text-slate-400 mt-1">Или нажмите на карту для выбора точки</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Номер дома</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Номер дома / уточнение</label>
                 <input
                   data-testid="house-input"
                   type="text"
                   value={houseNumber}
                   onChange={(e) => setHouseNumber(e.target.value)}
                   className="input-field"
-                  placeholder="1А"
+                  placeholder="1А, подъезд 2"
                 />
               </div>
             </div>
@@ -762,13 +832,10 @@ const CustomerMain = () => {
           userLocation={userLocation}
           driverLocation={driverLocation}
           driverInfo={driverInfo}
-          showUserPin={orderState !== 'idle' || true}
-          etaMinutes={etaMinutes}
-          onMapClick={(coords) => {
-            if (orderState === 'idle') {
-              setUserLocation(coords);
-            }
-          }}
+          showUserPin={true}
+          etaMinutes={currentOrder?.eta_minutes || etaMinutes}
+          onMapClick={handleMapClick}
+          customPinUrl={settings?.custom_pin_url || ''}
         />
       ) : (
         <TrackingMap 

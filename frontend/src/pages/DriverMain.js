@@ -243,17 +243,32 @@ const DriverMain = () => {
     }
   };
 
-  const handleAcceptOrder = async (orderId) => {
+  const [selectedEta, setSelectedEta] = useState(null);
+  const [showEtaSelect, setShowEtaSelect] = useState(null); // order id
+
+  const getEtaOptions = () => {
+    const opts = settings?.eta_options || '1,2,3,5';
+    return opts.split(',').map(s => parseInt(s.trim())).filter(n => n > 0);
+  };
+
+  const handleAcceptOrder = async (orderId, etaMinutes) => {
     if (user.balance <= 0 && !user.is_reliable) {
       setError('Недостаточно баланса для принятия заказов');
       return;
     }
 
+    if (!etaMinutes) {
+      // Show ETA selection first
+      setShowEtaSelect(orderId);
+      return;
+    }
+
     setLoading(true);
     setError('');
+    setShowEtaSelect(null);
 
     try {
-      const order = await api('POST', `/orders/accept/${orderId}`);
+      const order = await api('POST', `/orders/accept/${orderId}`, { eta_minutes: etaMinutes });
       setCurrentOrder(order);
       setAvailableOrders([]);
       setCompleteCooldown(120);
@@ -541,6 +556,22 @@ const DriverMain = () => {
                     Принять
                   </button>
                 </div>
+                {showEtaSelect === order.id && (
+                  <div className="mt-3 pt-3 border-t border-slate-100">
+                    <p className="text-xs text-slate-500 mb-2">Через сколько приедете?</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {getEtaOptions().map(m => (
+                        <button
+                          key={m}
+                          onClick={() => handleAcceptOrder(order.id, m)}
+                          className="px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-100 transition-colors"
+                        >
+                          {m} мин
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
