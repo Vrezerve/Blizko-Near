@@ -77,6 +77,21 @@ const CustomerAuth = () => {
     setError('');
 
     try {
+      // Check if user already has a PIN - skip SMS, go to PIN screen
+      const pinCheck = await axios.get(`${API}/auth/check-pin/${encodeURIComponent(cleanPhone)}/customer`);
+      if (pinCheck.data.has_pin) {
+        localStorage.setItem('taxi_pin_phone', cleanPhone);
+        localStorage.setItem('taxi_pin_role', 'customer');
+        localStorage.setItem('taxi_has_pin', 'true');
+        setRedirectingToPin(true);
+        navigate('/auth/pin');
+        return;
+      }
+    } catch (e) {
+      // If check fails, proceed with SMS
+    }
+
+    try {
       await sendCode(cleanPhone, 'customer');
       setStep('code');
     } catch (error) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const YandexMap = ({ 
   apiKey, 
@@ -18,6 +18,7 @@ const YandexMap = ({
   const driverPlacemarkRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
   const [ymapsLoaded, setYmapsLoaded] = useState(false);
+  const [mapActive, setMapActive] = useState(false);
 
   // Load Yandex Maps script
   useEffect(() => {
@@ -52,36 +53,25 @@ const YandexMap = ({
     if (!ymapsLoaded || !mapRef.current || mapInstanceRef.current) return;
 
     const ymaps = window.ymaps;
-    const isMobile = window.innerWidth < 768;
     
     const map = new ymaps.Map(mapRef.current, {
       center: userLocation ? [userLocation.lat, userLocation.lng] : center,
       zoom: zoom,
-      controls: ['zoomControl', 'geolocationControl']
+      controls: ['zoomControl']
     }, {
-      suppressMapOpenBlock: true,
-      yandexMapDisablePoiInteractivity: true
+      suppressMapOpenBlock: true
     });
 
-    // On mobile: disable drag and scrollZoom so page scrolls normally
+    // Disable all behaviors initially on mobile
+    const isMobile = window.innerWidth < 768;
     if (isMobile) {
-      map.behaviors.disable(['drag', 'scrollZoom']);
+      map.behaviors.disable(['drag', 'scrollZoom', 'dblClickZoom']);
       map.behaviors.enable('multiTouch');
     }
 
     map.events.add('click', (e) => {
       const coords = e.get('coords');
       if (onMapClick) onMapClick({ lat: coords[0], lng: coords[1] });
-      // Enable drag after tap on map (user wants to interact)
-      if (isMobile) {
-        map.behaviors.enable(['drag', 'scrollZoom']);
-        // Disable again after 5 seconds of no interaction
-        setTimeout(() => {
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.behaviors.disable(['drag', 'scrollZoom']);
-          }
-        }, 5000);
-      }
     });
 
     mapInstanceRef.current = map;
@@ -91,9 +81,26 @@ const YandexMap = ({
       if (mapInstanceRef.current) {
         mapInstanceRef.current.destroy();
         mapInstanceRef.current = null;
+        setMapReady(false);
       }
     };
   }, [ymapsLoaded]);
+
+  // Handle map activation on mobile (toggle between scroll page and interact map)
+  const activateMap = useCallback(() => {
+    if (!mapInstanceRef.current) return;
+    setMapActive(true);
+    mapInstanceRef.current.behaviors.enable(['drag', 'scrollZoom', 'dblClickZoom']);
+  }, []);
+
+  const deactivateMap = useCallback(() => {
+    if (!mapInstanceRef.current) return;
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+      setMapActive(false);
+      mapInstanceRef.current.behaviors.disable(['drag', 'scrollZoom', 'dblClickZoom']);
+    }
+  }, []);
 
   // Update user placemark
   useEffect(() => {
@@ -112,6 +119,8 @@ const YandexMap = ({
       });
       map.geoObjects.add(placemark);
       userPlacemarkRef.current = placemark;
+      // Center map on user
+      map.setCenter([userLocation.lat, userLocation.lng], zoom);
     }
   }, [mapReady, userLocation, showUserPin]);
 
@@ -136,7 +145,7 @@ const YandexMap = ({
       driverPlacemarkRef.current = placemark;
     }
 
-    // Pan map to show both user and driver
+    // Pan to show both user and driver
     if (userLocation) {
       try {
         map.setBounds([
@@ -147,14 +156,12 @@ const YandexMap = ({
     }
   }, [mapReady, driverLocation, driverInfo]);
 
-  // Additional markers (e.g. admin map with multiple drivers)
+  // Admin markers (multiple drivers)
   useEffect(() => {
     if (!mapReady || !window.ymaps || markers.length === 0) return;
     const ymaps = window.ymaps;
     const map = mapInstanceRef.current;
 
-    // Clear existing markers (except user and driver)
-    // We'll use a cluster for admin view
     const clusterer = new ymaps.Clusterer({ preset: 'islands#blueClusterIcons' });
     const placemarks = markers.map(m => {
       return new ymaps.Placemark([m.lat, m.lng], {
@@ -170,8 +177,27 @@ const YandexMap = ({
     return () => { map.geoObjects.remove(clusterer); };
   }, [mapReady, markers]);
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   return (
-    <div className="absolute inset-0" style={{ touchAction: 'pan-y' }}>
+    <div className="absolute inset-0">
+      {/* Overlay to intercept touch — allows page scroll, tap to activate map */}
+      {isMobile && !mapActive && (
+        <div 
+          className="absolute inset-0 z-10"
+          onClick={activateMap}
+          style={{ touchAction: 'pan-y' }}
+        />
+      )}
+      {/* Deactivate button */}
+      {isMobile && mapActive && (
+        <button
+          onClick={deactivateMap}
+          className="absolute top-3 right-3 z-20 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-xs font-medium text-slate-700 shadow-lg"
+        >
+          Закрыть карту
+        </button>
+      )}
       <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       {!ymapsLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-20">
