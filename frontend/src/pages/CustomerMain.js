@@ -7,6 +7,7 @@ import {
   History, Edit2, Camera, Clock, ChevronRight, Timer
 } from 'lucide-react';
 import axios from 'axios';
+import YandexMap from '../components/YandexMap';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -750,13 +751,29 @@ const CustomerMain = () => {
   return (
     <div className="app-container">
       {/* Map Background with tracking */}
-      <TrackingMap 
-        userLocation={userLocation} 
-        driverLocation={driverLocation}
-        driverInfo={driverInfo}
-        showUserPin={orderState !== 'idle' || true} 
-        etaMinutes={etaMinutes}
-      />
+      {settings?.yandex_map_api_key ? (
+        <YandexMap
+          apiKey={settings.yandex_map_api_key}
+          userLocation={userLocation}
+          driverLocation={driverLocation}
+          driverInfo={driverInfo}
+          showUserPin={orderState !== 'idle' || true}
+          etaMinutes={etaMinutes}
+          onMapClick={(coords) => {
+            if (orderState === 'idle') {
+              setUserLocation(coords);
+            }
+          }}
+        />
+      ) : (
+        <TrackingMap 
+          userLocation={userLocation} 
+          driverLocation={driverLocation}
+          driverInfo={driverInfo}
+          showUserPin={orderState !== 'idle' || true} 
+          etaMinutes={etaMinutes}
+        />
+      )}
       
       <div className="relative z-10 min-h-[100dvh] flex flex-col">
         {/* Header */}

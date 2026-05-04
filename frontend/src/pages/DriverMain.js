@@ -7,6 +7,7 @@ import {
   History, Edit2, Camera, Car
 } from 'lucide-react';
 import axios from 'axios';
+import YandexMap from '../components/YandexMap';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -545,7 +546,15 @@ const DriverMain = () => {
   return (
     <div className="app-container">
       {/* Map Background */}
-      <DriverMap userLocation={userLocation} />
+      {settings?.yandex_map_api_key ? (
+        <YandexMap
+          apiKey={settings.yandex_map_api_key}
+          userLocation={userLocation}
+          showUserPin={true}
+        />
+      ) : (
+        <DriverMap userLocation={userLocation} />
+      )}
       
       <div className="relative z-10 min-h-[100dvh] flex flex-col">
         {/* Header */}
