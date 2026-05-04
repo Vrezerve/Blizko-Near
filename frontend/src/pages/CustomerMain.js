@@ -642,31 +642,10 @@ const CustomerMain = () => {
                 <span className="font-medium">Водитель найден!</span>
               </div>
               <p className="text-slate-500 text-sm">{currentOrder?.address}{currentOrder?.house_number ? `, д. ${currentOrder.house_number}` : ''}</p>
+              {(currentOrder?.eta_minutes || etaMinutes) && (
+                <p className="text-lg font-bold text-slate-900 mt-1">Приедет через ~{currentOrder?.eta_minutes || etaMinutes} мин</p>
+              )}
             </div>
-
-            {/* ETA Card */}
-            {(currentOrder?.eta_minutes || etaMinutes) && (
-              <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-4 text-white">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                      <Timer className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-blue-100 text-sm">Прибудет через</p>
-                      <p className="text-2xl font-bold">~{currentOrder?.eta_minutes || etaMinutes} мин</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-blue-100 text-sm">Отслеживание</p>
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                      <span className="text-sm">Live</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
             <div className="card">
               <div className="flex items-center gap-4">
@@ -824,8 +803,8 @@ const CustomerMain = () => {
   };
 
   return (
-    <div className="app-container">
-      {/* Map Background with tracking */}
+    <div className="app-container" style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Map Background — full screen, below UI */}
       {settings?.yandex_map_api_key ? (
         <YandexMap
           apiKey={settings.yandex_map_api_key}
@@ -842,32 +821,32 @@ const CustomerMain = () => {
           userLocation={userLocation} 
           driverLocation={driverLocation}
           driverInfo={driverInfo}
-          showUserPin={orderState !== 'idle' || true} 
+          showUserPin={true} 
           etaMinutes={etaMinutes}
         />
       )}
       
-      <div className="relative z-10 min-h-[100dvh] flex flex-col">
-        {/* Header */}
-        <div className="p-4 flex items-center justify-between">
-          <button
-            data-testid="menu-btn"
-            onClick={() => setShowMenu(true)}
-            className="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center"
-          >
-            <Menu className="w-5 h-5 text-slate-700" />
-          </button>
-          
-          <div className="bg-white rounded-full shadow px-4 py-2 flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full pulse-dot" />
-            <span className="text-sm font-medium text-slate-700">{driverStats.online} онлайн</span>
-          </div>
+      {/* Header — floating on top */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, padding: 16, display: 'flex', justifyContent: 'space-between', pointerEvents: 'none' }}>
+        <button
+          data-testid="menu-btn"
+          onClick={() => setShowMenu(true)}
+          style={{ pointerEvents: 'auto' }}
+          className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center"
+        >
+          <Menu className="w-5 h-5 text-slate-700" />
+        </button>
+        
+        <div style={{ pointerEvents: 'auto' }} className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-2">
+          <div className="w-2 h-2 bg-green-500 rounded-full pulse-dot" />
+          <span className="text-sm font-medium text-slate-700">{driverStats.online} онлайн</span>
         </div>
+      </div>
 
-        <div className="flex-1 flex items-end">
-          <div className="bottom-sheet slide-up">
-            {renderContent()}
-          </div>
+      {/* Bottom sheet — floating at bottom */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, pointerEvents: 'none' }}>
+        <div style={{ pointerEvents: 'auto' }} className="bottom-sheet slide-up">
+          {renderContent()}
         </div>
       </div>
 

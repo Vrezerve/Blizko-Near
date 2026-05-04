@@ -164,12 +164,6 @@ const YandexMap = ({
           </div>
         </div>
       )}
-      {etaMinutes && driverLocation && (
-        <div style={{ position: 'absolute', top: 16, left: 16, background: '#fff', borderRadius: 12, padding: 12, zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-          <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Водитель приедет через</p>
-          <p style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: '2px 0 0' }}>~{etaMinutes} мин</p>
-        </div>
-      )}
     </div>
   );
 };
