@@ -263,78 +263,56 @@ const CustomerMain = () => {
     };
     checkActiveOrder();
 
-    // Setup WebSocket with retry
-    const wsUrl = process.env.REACT_APP_BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    const connectWs = () => {
+    // Order status polling (replaces WebSocket — works through any proxy/firewall)
+    const orderPollRef = { current: null };
+    const pollOrderStatus = async () => {
       try {
-        wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
-        wsRef.current.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.type === 'order_accepted') {
-            setCurrentOrder(data.order);
-            setOrderState('found');
-            clearTimeout(noDriverTimerRef.current);
-            startDriverTracking(data.order.driver_id);
-          } else if (data.type === 'order_completed') {
-            setOrderState('completed');
-            stopDriverTracking();
-            setTimeout(() => {
-              setOrderState('idle');
-              setCurrentOrder(null);
-              setDriverLocation(null);
-              setDriverInfo(null);
-              setEtaMinutes(null);
-            }, 3000);
-          } else if (data.type === 'driver_location') {
-            setDriverLocation(data.location);
-            setEtaMinutes(data.eta_minutes);
+        const res = await api('GET', '/orders/my-active');
+        if (!res || res.status === 'none') return;
+        
+        if (res.status === 'accepted' && orderState === 'searching') {
+          setCurrentOrder(res);
+          setOrderState('found');
+          clearTimeout(noDriverTimerRef.current);
+          // Set driver info from response
+          if (res.driver_location) {
+            setDriverLocation(res.driver_location);
+          }
+          if (res.driver_name) {
             setDriverInfo({
-              driver_name: data.driver_name,
-              car_model: data.car_model,
-              car_number: data.car_number
+              driver_name: res.driver_name,
+              car_model: res.driver_car,
+              car_number: res.driver_car_number
             });
           }
-        };
-        wsRef.current.onerror = () => {};
-        wsRef.current.onclose = () => {
-          setTimeout(() => { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connectWs(); }, 5000);
-        };
-      } catch(e) {}
+          if (res.eta_minutes) {
+            setEtaMinutes(res.eta_minutes);
+          }
+        } else if (res.status === 'accepted' && orderState === 'found') {
+          // Update driver location
+          if (res.driver_location) {
+            setDriverLocation(res.driver_location);
+          }
+        } else if (res.status === 'completed') {
+          setOrderState('completed');
+          stopDriverTracking();
+          setTimeout(() => { setOrderState('idle'); setCurrentOrder(null); setDriverLocation(null); setDriverInfo(null); setEtaMinutes(null); }, 3000);
+        }
+      } catch (e) {}
     };
-    connectWs();
+    
+    orderPollRef.current = setInterval(pollOrderStatus, 3000);
 
     return () => {
       clearInterval(statsInterval);
+      clearInterval(orderPollRef.current);
       clearTimeout(noDriverTimerRef.current);
       stopDriverTracking();
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
     };
   }, [user, navigate, api]);
 
-  const startDriverTracking = (driverId) => {
-    // Fetch initial driver location
-    const fetchDriverLocation = async () => {
-      try {
-        const driver = await api('GET', `/drivers/location/${driverId}`);
-        if (driver.location) {
-          setDriverLocation(driver.location);
-          setEtaMinutes(driver.eta_minutes);
-          setDriverInfo({
-            driver_name: driver.name,
-            car_model: driver.car_model,
-            car_number: driver.car_number
-          });
-        }
-      } catch (error) {
-        console.error('Failed to fetch driver location');
-      }
-    };
-    
-    fetchDriverLocation();
-    // Poll every 5 seconds as backup (WebSocket is primary)
-    locationTrackingRef.current = setInterval(fetchDriverLocation, 5000);
+  const startDriverTracking = () => {
+    // No-op: driver location is now fetched via /orders/my-active polling
   };
 
   const stopDriverTracking = () => {

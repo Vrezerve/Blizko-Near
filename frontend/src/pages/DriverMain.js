@@ -166,33 +166,20 @@ const DriverMain = () => {
     fetchOrders();
     const ordersInterval = setInterval(fetchOrders, 5000);
 
-    // Setup WebSocket with retry
-    const wsUrl = process.env.REACT_APP_BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    const connectWs = () => {
+    // Order polling (replaces WebSocket — works through any proxy/firewall)
+    const orderPollInterval = setInterval(async () => {
+      if (!isReadyRef.current) return;
       try {
-        wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
-        wsRef.current.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.type === 'new_order' && isReadyRef.current) {
-            setAvailableOrders(prev => [data.order, ...prev.filter(o => o.id !== data.order.id)]);
-          } else if (data.type === 'order_taken') {
-            setAvailableOrders(prev => prev.filter(o => o.id !== data.order_id));
-          }
-        };
-        wsRef.current.onerror = () => {};
-        wsRef.current.onclose = () => {
-          setTimeout(() => { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connectWs(); }, 5000);
-        };
-      } catch(e) {}
-    };
-    connectWs();
+        const data = await api('GET', '/orders/active');
+        if (data?.available_orders) {
+          setAvailableOrders(data.available_orders);
+        }
+      } catch (e) {}
+    }, 3000);
 
     return () => {
       clearInterval(ordersInterval);
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      // Stop location tracking
+      clearInterval(orderPollInterval);
       if (locationWatchId) {
         navigator.geolocation.clearWatch(locationWatchId);
       }

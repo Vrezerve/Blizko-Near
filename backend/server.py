@@ -984,6 +984,33 @@ async def get_my_orders(user: dict = Depends(get_current_user)):
         orders = await db.orders.find({"driver_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return orders
 
+@orders_router.get("/my-active")
+async def get_my_active_order(user: dict = Depends(get_current_user)):
+    """Get customer's current active order (for polling)"""
+    order = await db.orders.find_one(
+        {"customer_id": user["id"], "status": {"$in": ["pending", "accepted"]}},
+        {"_id": 0}
+    )
+    if not order:
+        return {"status": "none"}
+    
+    # If accepted, add driver location
+    if order.get("status") == "accepted" and order.get("driver_id"):
+        driver = await db.users.find_one(
+            {"id": order["driver_id"]},
+            {"_id": 0, "name": 1, "car_model": 1, "car_number": 1, "phone": 1, "location": 1, "avatar": 1}
+        )
+        if driver:
+            order["driver_name"] = driver.get("name", "")
+            order["driver_car"] = driver.get("car_model", "")
+            order["driver_car_number"] = driver.get("car_number", "")
+            order["driver_phone"] = driver.get("phone", "")
+            order["driver_location"] = driver.get("location")
+            order["driver_avatar"] = driver.get("avatar", "")
+    
+    return order
+
+
 @orders_router.get("/history")
 async def get_order_history(user: dict = Depends(get_current_user)):
     """Get order history with status changes for user's app"""
