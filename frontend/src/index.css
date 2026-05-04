@@ -81,6 +81,20 @@ h1, h2, h3, h4, h5, h6 {
   z-index: 50;
   padding: 1.5rem;
   padding-bottom: 2rem;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.bottom-sheet.collapsed {
+  transform: translateX(-50%) translateY(calc(100% - 3rem));
+}
+
+.bottom-sheet .sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: #cbd5e1;
+  border-radius: 2px;
+  margin: 0 auto 12px;
+  cursor: pointer;
 }
 
 .btn-primary {
@@ -259,11 +273,11 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(100%);
+    transform: translateX(-50%) translateY(100%);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(-50%) translateY(0);
   }
 }
 

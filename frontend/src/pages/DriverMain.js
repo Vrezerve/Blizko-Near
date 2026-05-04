@@ -705,16 +705,27 @@ const DriverMain = () => {
             <div className="p-4 space-y-4">
               <div className="flex justify-center">
                 <div className="relative">
-                  <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center">
+                  <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center overflow-hidden">
                     {user?.avatar ? (
-                      <img src={user.avatar} alt="" className="w-24 h-24 rounded-full object-cover" />
+                      <img src={user.avatar.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + user.avatar : user.avatar} alt="" className="w-24 h-24 rounded-full object-cover" />
                     ) : (
                       <User className="w-12 h-12 text-blue-600" />
                     )}
                   </div>
-                  <button className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white shadow">
+                  <label className="absolute bottom-0 right-0 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white shadow cursor-pointer">
                     <Camera className="w-4 h-4" />
-                  </button>
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      try {
+                        const res = await axios.post(`${API}/auth/upload-avatar`, fd, { headers: { 'Authorization': `Bearer ${token}` } });
+                        if (res.data.avatar_url) await refreshUser();
+                      } catch(err) { alert('Ошибка загрузки фото'); }
+                      e.target.value = '';
+                    }} />
+                  </label>
                 </div>
               </div>
               

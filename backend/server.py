@@ -1709,6 +1709,29 @@ async def upload_app_icon(file: UploadFile = File(...), user: dict = Depends(get
     
     return {"success": True, "url": icon_url}
 
+@auth_router.post("/upload-avatar")
+async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+    """Upload user avatar"""
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP, GIF")
+    
+    if file.size and file.size > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 2 МБ")
+    
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    filename = f"avatar_{user['id'][:8]}_{uuid.uuid4().hex[:6]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    avatar_url = f"/api/uploads/{filename}"
+    await db.users.update_one({"id": user["id"]}, {"$set": {"avatar": avatar_url}})
+    
+    return {"success": True, "avatar_url": avatar_url}
+
 # ============ WEBSOCKET ============
 
 @app.websocket("/ws/{user_id}")
