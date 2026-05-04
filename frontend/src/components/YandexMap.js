@@ -143,10 +143,10 @@ const YandexMap = ({
   }, [mapReady, markers]);
 
   return (
-    <div className="absolute inset-0 relative">
-      <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+    <div className="absolute inset-0">
+      <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       {!ymapsLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-20">
           <div className="text-center">
             <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
             <p className="text-sm text-slate-500">Загрузка карты...</p>
