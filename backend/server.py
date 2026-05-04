@@ -328,7 +328,7 @@ async def system_log(level: str, source: str, message: str, details: dict = None
     await db.system_logs.insert_one(entry)
 
 async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push"):
-    """Mock notification - logs to DB for admin review"""
+    """Send push notification via OneSignal (if configured) or log to DB"""
     notification = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -338,9 +338,87 @@ async def send_notification(user_id: str, title: str, message: str, notification
         "sent_at": datetime.now(timezone.utc).isoformat(),
         "status": "pending"
     }
+    
+    # Try OneSignal push
+    settings = await db.settings.find_one({"id": "main"})
+    onesignal_app_id = settings.get("onesignal_app_id", "") if settings else ""
+    onesignal_api_key = settings.get("onesignal_api_key", "") if settings else ""
+    
+    if onesignal_app_id and onesignal_api_key and notification_type == "push":
+        try:
+            import requests as http_requests
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Basic {onesignal_api_key}"
+            }
+            payload = {
+                "app_id": onesignal_app_id,
+                "headings": {"en": title, "ru": title},
+                "contents": {"en": message, "ru": message},
+                "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}]
+            }
+            resp = http_requests.post("https://onesignal.com/api/v1/notifications", json=payload, headers=headers, timeout=10)
+            result = resp.json()
+            if result.get("id"):
+                notification["status"] = "sent"
+                notification["onesignal_id"] = result["id"]
+                await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": result["id"]})
+            else:
+                notification["status"] = "failed"
+                await system_log("warning", "push", f"Push не отправлен: {result.get('errors', '')}", {"user_id": user_id[:8]})
+        except Exception as e:
+            notification["status"] = "error"
+            await system_log("error", "push", f"Ошибка OneSignal: {str(e)}", {"user_id": user_id[:8]})
+    
     await db.notifications.insert_one(notification)
     await log_action("notification_sent", user_id, {"title": title, "type": notification_type})
     return notification
+
+async def send_email(to_email: str, subject: str, body: str, html_body: str = None):
+    """Send email via SMTP"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    settings = await db.settings.find_one({"id": "main"})
+    if not settings:
+        return False
+    
+    smtp_host = settings.get("smtp_host", "")
+    smtp_port = settings.get("smtp_port", 465)
+    smtp_user = settings.get("smtp_user", "")
+    smtp_password = settings.get("smtp_password", "")
+    smtp_from = settings.get("smtp_from_email", smtp_user)
+    
+    if not smtp_host or not smtp_user or not smtp_password:
+        await system_log("warning", "email", f"SMTP не настроен, письмо не отправлено: {subject}")
+        return False
+    
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = smtp_from
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
+        
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+            server.starttls()
+        
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_from, to_email, msg.as_string())
+        server.quit()
+        
+        await system_log("info", "email", f"Email отправлен: {subject}", {"to": to_email})
+        return True
+    except Exception as e:
+        await system_log("error", "email", f"Ошибка SMTP: {str(e)}", {"to": to_email, "subject": subject})
+        return False
 
 async def send_admin_email(subject: str, body: str):
     """Send email notification to admin"""
@@ -355,15 +433,26 @@ async def send_admin_email(subject: str, body: str):
         "type": "email",
         "to_email": admin_email,
         "sent_at": datetime.now(timezone.utc).isoformat(),
-        "status": "pending" if admin_email else "no_email_configured"
+        "status": "pending"
     }
+    
+    sent = False
+    if admin_email:
+        html = f"""
+        <div style="font-family:Inter,Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px">
+            <h2 style="color:#0f172a;margin-bottom:10px">{subject}</h2>
+            <div style="color:#475569;line-height:1.6;white-space:pre-line">{body}</div>
+            <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0">
+            <p style="color:#94a3b8;font-size:12px">Такси «Рядом» — Уведомление администратору</p>
+        </div>
+        """
+        sent = await send_email(admin_email, subject, body, html)
+        notification["status"] = "sent" if sent else "smtp_error"
+    else:
+        notification["status"] = "no_email_configured"
+    
     await db.notifications.insert_one(notification)
-    
-    # TODO: Real SMTP integration
-    # if admin_email and settings.get("smtp_host"):
-    #     send via SMTP
-    
-    await log_action("admin_email_sent", None, {"subject": subject})
+    await log_action("admin_email_sent", None, {"subject": subject, "sent": sent})
     return notification
 
 async def check_device_blocked(device_id: str) -> dict:
@@ -1603,6 +1692,36 @@ async def get_updates(user: dict = Depends(get_admin_user)):
     async for u in db.updates.find({}, {"_id": 0}).sort("applied_at", -1).limit(50):
         updates.append(u)
     return updates
+
+@admin_router.post("/test-smtp")
+async def test_smtp(user: dict = Depends(get_admin_user)):
+    """Send a test email to admin"""
+    settings = await db.settings.find_one({"id": "main"})
+    admin_email = settings.get("admin_email", "") if settings else ""
+    if not admin_email:
+        raise HTTPException(status_code=400, detail="Email админа не задан")
+    
+    sent = await send_email(
+        admin_email, 
+        "Тест SMTP — Такси «Рядом»", 
+        "Если вы видите это письмо, SMTP настроен правильно!",
+        "<div style='font-family:Inter,sans-serif;padding:20px'><h2>SMTP работает!</h2><p>Если вы видите это письмо, SMTP настроен правильно.</p></div>"
+    )
+    if sent:
+        return {"success": True, "message": f"Тестовое письмо отправлено на {admin_email}"}
+    else:
+        raise HTTPException(status_code=500, detail="Не удалось отправить. Проверьте SMTP-настройки в логах.")
+
+@admin_router.post("/test-push")
+async def test_push(user: dict = Depends(get_admin_user)):
+    """Send a test push notification"""
+    settings = await db.settings.find_one({"id": "main"})
+    if not settings or not settings.get("onesignal_app_id"):
+        raise HTTPException(status_code=400, detail="OneSignal не настроен")
+    
+    await send_notification(user["id"], "Тест Push", "Push-уведомления работают!", "push")
+    return {"success": True, "message": "Тестовый push отправлен"}
+
 
 # ============ SETTINGS ROUTES ============
 

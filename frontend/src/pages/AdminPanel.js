@@ -1463,6 +1463,37 @@ const AdminPanel = () => {
                 placeholder="admin@example.com"
               />
             </div>
+            
+            <div className="flex gap-3 pt-2">
+              <button
+                data-testid="test-smtp-btn"
+                onClick={async () => {
+                  try {
+                    const res = await api('POST', '/admin/test-smtp');
+                    alert(res.message || 'Тестовое письмо отправлено!');
+                  } catch (e) {
+                    alert(e.response?.data?.detail || 'Ошибка отправки');
+                  }
+                }}
+                className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100"
+              >
+                Тест SMTP
+              </button>
+              <button
+                data-testid="test-push-btn"
+                onClick={async () => {
+                  try {
+                    const res = await api('POST', '/admin/test-push');
+                    alert(res.message || 'Тестовый push отправлен!');
+                  } catch (e) {
+                    alert(e.response?.data?.detail || 'OneSignal не настроен');
+                  }
+                }}
+                className="px-4 py-2 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-100"
+              >
+                Тест Push
+              </button>
+            </div>
           </div>
         </div>
 
