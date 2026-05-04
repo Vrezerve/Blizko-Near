@@ -28,14 +28,21 @@ const YandexMap = ({
     if (document.querySelector('script[src*="api-maps.yandex.ru"]')) {
       const check = setInterval(() => {
         if (window.ymaps) { setYmapsLoaded(true); clearInterval(check); }
-      }, 100);
+      }, 200);
       return () => clearInterval(check);
     }
     const script = document.createElement('script');
     script.src = `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU`;
     script.async = true;
     script.onload = () => {
-      window.ymaps.ready(() => setYmapsLoaded(true));
+      const waitReady = () => {
+        if (window.ymaps && window.ymaps.ready) {
+          window.ymaps.ready(() => setYmapsLoaded(true));
+        } else {
+          setTimeout(waitReady, 100);
+        }
+      };
+      waitReady();
     };
     document.head.appendChild(script);
   }, [apiKey]);
@@ -52,22 +59,28 @@ const YandexMap = ({
       zoom: zoom,
       controls: ['zoomControl', 'geolocationControl']
     }, {
-      // Allow page scroll on mobile - disable drag by default
-      suppressMapOpenBlock: true
+      suppressMapOpenBlock: true,
+      yandexMapDisablePoiInteractivity: true
     });
 
-    // On mobile: disable drag so page scrolls, enable multiTouch for pinch-zoom
+    // On mobile: disable drag and scrollZoom so page scrolls normally
     if (isMobile) {
-      map.behaviors.disable('drag');
+      map.behaviors.disable(['drag', 'scrollZoom']);
       map.behaviors.enable('multiTouch');
     }
 
     map.events.add('click', (e) => {
       const coords = e.get('coords');
       if (onMapClick) onMapClick({ lat: coords[0], lng: coords[1] });
-      // Enable drag after first click on mobile (user interacted with map)
+      // Enable drag after tap on map (user wants to interact)
       if (isMobile) {
-        map.behaviors.enable('drag');
+        map.behaviors.enable(['drag', 'scrollZoom']);
+        // Disable again after 5 seconds of no interaction
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.behaviors.disable(['drag', 'scrollZoom']);
+          }
+        }, 5000);
       }
     });
 
@@ -158,7 +171,7 @@ const YandexMap = ({
   }, [mapReady, markers]);
 
   return (
-    <div className="absolute inset-0">
+    <div className="absolute inset-0" style={{ touchAction: 'pan-y' }}>
       <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       {!ymapsLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-20">

@@ -166,18 +166,26 @@ const DriverMain = () => {
     fetchOrders();
     const ordersInterval = setInterval(fetchOrders, 5000);
 
-    // Setup WebSocket
+    // Setup WebSocket with retry
     const wsUrl = process.env.REACT_APP_BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
-    
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'new_order' && isReadyRef.current) {
-        setAvailableOrders(prev => [data.order, ...prev.filter(o => o.id !== data.order.id)]);
-      } else if (data.type === 'order_taken') {
-        setAvailableOrders(prev => prev.filter(o => o.id !== data.order_id));
-      }
+    const connectWs = () => {
+      try {
+        wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
+        wsRef.current.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === 'new_order' && isReadyRef.current) {
+            setAvailableOrders(prev => [data.order, ...prev.filter(o => o.id !== data.order.id)]);
+          } else if (data.type === 'order_taken') {
+            setAvailableOrders(prev => prev.filter(o => o.id !== data.order_id));
+          }
+        };
+        wsRef.current.onerror = () => {};
+        wsRef.current.onclose = () => {
+          setTimeout(() => { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connectWs(); }, 5000);
+        };
+      } catch(e) {}
     };
+    connectWs();
 
     return () => {
       clearInterval(ordersInterval);

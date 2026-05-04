@@ -266,16 +266,22 @@ const AdminPanel = () => {
     try {
       switch (activeTab) {
         case 'dashboard':
-          const [statsData, driversData] = await Promise.all([
+          const [statsData, driversData, dashSettingsData] = await Promise.all([
             api('GET', '/admin/stats'),
-            api('GET', '/drivers/online-locations')
+            api('GET', '/drivers/online-locations'),
+            api('GET', '/settings/')
           ]);
           setStats(statsData);
           setOnlineDrivers(driversData);
+          setSettings(dashSettingsData);
           break;
         case 'map':
           const mapDrivers = await api('GET', '/drivers/online-locations');
           setOnlineDrivers(mapDrivers);
+          if (!settings?.yandex_map_api_key) {
+            const mapSettings = await api('GET', '/settings/');
+            setSettings(mapSettings);
+          }
           break;
         case 'customers':
           const customersData = await api('GET', '/admin/users?role=customer');

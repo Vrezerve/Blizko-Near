@@ -259,40 +259,45 @@ const CustomerMain = () => {
     };
     checkActiveOrder();
 
-    // Setup WebSocket
+    // Setup WebSocket with retry
     const wsUrl = process.env.REACT_APP_BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://');
-    wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
-    
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'order_accepted') {
-        setCurrentOrder(data.order);
-        setOrderState('found');
-        clearTimeout(noDriverTimerRef.current);
-        // Start tracking
-        startDriverTracking(data.order.driver_id);
-      } else if (data.type === 'order_completed') {
-        setOrderState('completed');
-        stopDriverTracking();
-        setTimeout(() => {
-          setOrderState('idle');
-          setCurrentOrder(null);
-          setDriverLocation(null);
-          setDriverInfo(null);
-          setEtaMinutes(null);
-        }, 3000);
-      } else if (data.type === 'driver_location') {
-        // Real-time driver location update
-        setDriverLocation(data.location);
-        setEtaMinutes(data.eta_minutes);
-        setDriverInfo({
-          driver_name: data.driver_name,
-          car_model: data.car_model,
-          car_number: data.car_number
-        });
-      }
+    const connectWs = () => {
+      try {
+        wsRef.current = new WebSocket(`${wsUrl}/ws/${user.id}`);
+        wsRef.current.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.type === 'order_accepted') {
+            setCurrentOrder(data.order);
+            setOrderState('found');
+            clearTimeout(noDriverTimerRef.current);
+            startDriverTracking(data.order.driver_id);
+          } else if (data.type === 'order_completed') {
+            setOrderState('completed');
+            stopDriverTracking();
+            setTimeout(() => {
+              setOrderState('idle');
+              setCurrentOrder(null);
+              setDriverLocation(null);
+              setDriverInfo(null);
+              setEtaMinutes(null);
+            }, 3000);
+          } else if (data.type === 'driver_location') {
+            setDriverLocation(data.location);
+            setEtaMinutes(data.eta_minutes);
+            setDriverInfo({
+              driver_name: data.driver_name,
+              car_model: data.car_model,
+              car_number: data.car_number
+            });
+          }
+        };
+        wsRef.current.onerror = () => {};
+        wsRef.current.onclose = () => {
+          setTimeout(() => { if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) connectWs(); }, 5000);
+        };
+      } catch(e) {}
     };
+    connectWs();
 
     return () => {
       clearInterval(statsInterval);
