@@ -421,17 +421,44 @@ async def send_verification_code(data: dict):
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
     })
     
-    # Send push notification with code
-    await send_notification(
-        phone, 
-        "Код подтверждения", 
-        f"Ваш код для входа: {code}", 
-        "push"
-    )
+    # Try to send via SMS.ru if key is configured
+    sms_sent = False
+    settings = await db.settings.find_one({"id": "main"})
+    sms_api_key = settings.get("sms_ru_api_key", "") if settings else ""
     
-    await log_action("verification_code_sent", None, {"phone": phone, "device_id": device_id[:8]})
+    if sms_api_key:
+        try:
+            import requests as http_requests
+            # Normalize phone: remove +, spaces
+            clean_phone = phone.replace("+", "").replace(" ", "").replace("-", "")
+            params = {
+                "api_id": sms_api_key,
+                "to": clean_phone,
+                "msg": f"Код подтверждения: {code}",
+                "json": 1
+            }
+            resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
+            result = resp.json()
+            if result.get("status") == "OK":
+                sms_sent = True
+                await system_log("info", "sms", f"SMS отправлен на {phone}", {"status": "OK", "balance": result.get("balance")})
+            else:
+                await system_log("warning", "sms", f"SMS не отправлен: {result.get('status_text', 'unknown')}", {"phone": phone, "response": result})
+        except Exception as e:
+            await system_log("error", "sms", f"Ошибка отправки SMS: {str(e)}", {"phone": phone})
     
-    return {"success": True, "message": "Code sent via push notification"}
+    if not sms_sent:
+        # Fallback: log code in notifications (mock push)
+        await send_notification(
+            phone, 
+            "Код подтверждения", 
+            f"Ваш код для входа: {code}", 
+            "sms" if sms_api_key else "push"
+        )
+    
+    await log_action("verification_code_sent", None, {"phone": phone, "device_id": device_id[:8], "sms_sent": sms_sent})
+    
+    return {"success": True, "message": "Code sent via SMS" if sms_sent else "Code sent via push notification"}
 
 @auth_router.post("/verify-code")
 async def verify_code(data: VerifyCode):
@@ -467,8 +494,8 @@ async def verify_code(data: VerifyCode):
         if not user:
             # Check registration count from this device
             reg_count = await get_device_registration_count(data.device_id)
-            if reg_count >= 1:
-                # Block device after 2nd registration attempt
+            if reg_count >= 5:
+                # Block device after too many registrations
                 await block_device(data.device_id, "Множественные регистрации с одного устройства")
                 raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
             
@@ -612,8 +639,25 @@ async def reset_pin_request(data: ResetPinRequest):
         "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
     })
     
-    await send_notification(user["id"], "Сброс PIN-кода", f"Ваш код для сброса PIN: {code}", "push")
-    await log_action("pin_reset_requested", user["id"], {"phone": data.phone})
+    # Try SMS.ru
+    settings = await db.settings.find_one({"id": "main"})
+    sms_api_key = settings.get("sms_ru_api_key", "") if settings else ""
+    sms_sent = False
+    if sms_api_key:
+        try:
+            import requests as http_requests
+            clean_phone = data.phone.replace("+", "").replace(" ", "").replace("-", "")
+            params = {"api_id": sms_api_key, "to": clean_phone, "msg": f"Код сброса PIN: {code}", "json": 1}
+            resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
+            if resp.json().get("status") == "OK":
+                sms_sent = True
+        except Exception:
+            pass
+    
+    if not sms_sent:
+        await send_notification(user["id"], "Сброс PIN-кода", f"Ваш код для сброса PIN: {code}", "push")
+    
+    await log_action("pin_reset_requested", user["id"], {"phone": data.phone, "sms_sent": sms_sent})
     
     return {"success": True, "message": "Code sent for PIN reset"}
 
@@ -694,7 +738,7 @@ async def register_driver(data: DriverCreate):
     
     # Check registration count from this device
     reg_count = await get_device_registration_count(data.device_id)
-    if reg_count >= 1:
+    if reg_count >= 5:
         await block_device(data.device_id, "Множественные регистрации с одного устройства")
         raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
     
@@ -1597,6 +1641,9 @@ async def get_public_settings():
         "maintenance_mode": settings.get("maintenance_mode", False),
         "maintenance_text": settings.get("maintenance_text", ""),
         "test_mode": settings.get("test_mode", True),
+        "yandex_map_api_key": settings.get("yandex_map_api_key", ""),
+        "google_map_api_key": settings.get("google_map_api_key", ""),
+        "active_map_provider": settings.get("active_map_provider", "yandex"),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),

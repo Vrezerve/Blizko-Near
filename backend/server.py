@@ -494,8 +494,8 @@ async def verify_code(data: VerifyCode):
         if not user:
             # Check registration count from this device
             reg_count = await get_device_registration_count(data.device_id)
-            if reg_count >= 1:
-                # Block device after 2nd registration attempt
+            if reg_count >= 5:
+                # Block device after too many registrations
                 await block_device(data.device_id, "Множественные регистрации с одного устройства")
                 raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
             
@@ -738,7 +738,7 @@ async def register_driver(data: DriverCreate):
     
     # Check registration count from this device
     reg_count = await get_device_registration_count(data.device_id)
-    if reg_count >= 1:
+    if reg_count >= 5:
         await block_device(data.device_id, "Множественные регистрации с одного устройства")
         raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
     
