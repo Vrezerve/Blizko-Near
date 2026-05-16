@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import YandexMap from '../components/YandexMap';
+import FabBar from '../components/FabBar';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -608,6 +609,20 @@ const DriverMain = () => {
           </div>
         </div>
       </div>
+
+      {/* Fab bar — visible only when no active order and no overlay */}
+      {!currentOrder && !showMenu && !showProfile && !showHistory && (
+        <FabBar
+          role="driver"
+          primaryLabel={isReady ? 'На линии' : 'Заявки'}
+          onPrimaryClick={() => {
+            // Just close any overlay and keep main screen
+            setShowMenu(false);
+            setShowProfile(false);
+            setShowHistory(false);
+          }}
+        />
+      )}
 
       {/* Menu Drawer */}
       {showMenu && (

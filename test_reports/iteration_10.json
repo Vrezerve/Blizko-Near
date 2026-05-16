@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 10 — Tested the new FAB-bar feature. Backend: created /app/backend/tests/test_fab_buttons.py with 20 pytest cases covering public list (role filter, invalid/missing role, role='both' visibility, is_active filter), admin CRUD (create/read/update/delete + 404 on missing), admin auth (anon + customer), limit enforcement (4th active rejected; inactive extras allowed; role='both' counts against both customer & driver), and SVG upload (valid svg accepted, non-svg + xml-without-<svg-tag rejected, admin-only). All 20 tests pass (100%). Frontend: UI testing of Admin Panel FAB CRUD was BLOCKED by a pre-existing critical runtime bug — `YandexMap` (imported in AdminPanel.js:12, rendered by AdminMap at line 26) throws `TypeError: ymaps.Map is not a constructor` on /admin which crashes the entire React tree (no error boundary), leaving document.body empty. Admin login itself works and returns a valid token. Customer-side FabBar UI flow was not tested because (a) admin UI is blocked, (b) FabBar only renders when sheetCollapsed && orderState==='idle' && no overlay — and the customer page also depends on YandexMap.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/fab-buttons/upload-svg", "issue": "Endpoint only returns the svg text — it does not persist the file or wire it to a button. The caller must pass the returned text into a subsequent POST /fab-buttons icon_svg. Behavior is documented but worth confirming with the PRD."},
+      {"endpoint": "GET /api/settings/fab-buttons", "issue": "Missing role returns 422 (FastAPI validation) instead of a friendly 400 — acceptable but inconsistent with the 400 returned for invalid role."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminPanel / AdminMap (YandexMap)", "issue": "On /admin the YandexMap component throws 'ymaps.Map is not a constructor', the dev error overlay covers the page AND the root React tree unmounts (document.body.innerText is empty). This makes the WHOLE admin panel — including the new 'Fab-бар' tab — unusable for testing. Likely cause: window.ymaps exists but ymaps.ready() must be awaited before calling new ymaps.Map (race condition between script loader and component mount). No error boundary is in place to isolate the failure.", "selector": "AdminPanel.js:12 import + line 26 <YandexMap>", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin → Fab-бар tab CRUD", "issue": "Cannot be exercised end-to-end through the UI until the YandexMap crash is fixed or wrapped in an error boundary. Backend endpoints are confirmed working via pytest.", "affected_selectors": ["[data-testid=\"nav-fabbar\"]", "[data-testid=\"fab-add-btn\"]", "[data-testid=\"fab-edit-label\"]", "[data-testid=\"fab-save-btn\"]"]},
+      {"flow": "Customer FabBar visibility on /customer", "issue": "Not verified through the UI (customer page also depends on YandexMap and on collapsing the bottom sheet)."}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fab_buttons.py",
+    "/app/test_reports/pytest/iter10_fab_buttons.xml"
+  ],
+  "action_items": [
+    "[HIGH] Fix or guard the YandexMap initialization so that a missing/late `window.ymaps` does not crash AdminPanel. Wrap <YandexMap> in a React ErrorBoundary so unrelated tabs (incl. Fab-бар) remain usable. Use ymaps.ready(...) before calling `new ymaps.Map`.",
+    "[MEDIUM] Once the admin UI loads, re-run an end-to-end test of Fab-бар: add → list → edit → delete; then login as customer, collapse sheet, verify FabBar shows the new custom button and the modal opens with correct title/HTML.",
+    "[LOW] Consider making POST /fab-buttons/upload-svg also accept inline form-data and persist to disk for very large SVGs (currently capped at 200KB inline)."
+  ],
+  "critical_code_review_comments": [
+    "AdminPanel.js (>2500 lines) — should be split per tab/section; current monolith makes navigation and code review hard and amplifies blast radius of one tab's runtime error.",
+    "No React ErrorBoundary anywhere around YandexMap or AdminPanel — a single component throw nukes the whole admin app.",
+    "server.py FAB endpoints look clean: ObjectId is excluded ({'_id': 0}), role is validated, limit enforcement also runs on PUT (re-activation) which is good.",
+    "FAB_MAX_PER_ROLE constant (3) is hard-coded in server.py — consider moving to settings/.env for tunability."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_fab_buttons.py"
+  ],
+  "success_rate": {"backend": "100% (20/20)", "frontend": "not tested — blocked by pre-existing YandexMap crash"},
+  "test_credentials": "Admin admin@taxi.local/admin123 (works). Customer +79001234567 OTP 1234 via /auth/send-code + /auth/verify-code (verified during fixture build).",
+  "seed_data_creation": "None persisted — every test cleans its own TEST_ prefixed buttons. The TestLimit class temporarily deactivates pre-existing active buttons and restores them on teardown (isolated_slate fixture).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend FAB endpoints are fully tested (test_fab_buttons.py, 20/20 pass). Frontend testing is BLOCKED until the ymaps issue is fixed: either wrap YandexMap in ErrorBoundary, fix ymaps.ready() handling, or temporarily comment out <AdminMap><YandexMap/></AdminMap> to validate the Fab-бар tab UI. data-testids in place: nav-fabbar, fab-add-btn, fab-edit-{id}, fab-delete-{id}, fab-edit-label/role/svg/title/content, fab-save-btn (modal). Customer FabBar: fab-bar, fab-btn-primary, fab-btn-{id}, fab-modal, fab-modal-close.",
+  "rca of the issue": "AdminPanel.js imports YandexMap which calls `new window.ymaps.Map(...)` inside a useEffect on mount. When the Yandex JS API hasn't finished initializing (window.ymaps is the loader stub, not the ready namespace), the constructor is undefined and a TypeError is thrown synchronously inside the effect. React surfaces this to the nearest ErrorBoundary — and since there is none, the entire AdminPanel unmounts, leaving body empty and the dev-overlay visible. Reproduction: navigate to /admin/login, log in as admin/admin123 — observe empty body + 'ymaps.Map is not a constructor' page error. Mitigation options: (1) call window.ymaps.ready(() => { ... }) before constructing the Map (Yandex Maps API best practice), (2) wrap <AdminMap> / <YandexMap> in a React ErrorBoundary so other admin tabs survive, (3) load the ymaps script with `&onload=...` callback or feature-detect `typeof ymaps.Map === 'function'` before calling new."
+}

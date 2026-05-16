@@ -251,6 +251,9 @@ const AdminPanel = () => {
   const [moduleUploading, setModuleUploading] = useState(null);
   const [systemLogs, setSystemLogs] = useState([]);
   const [sysLogFilter, setSysLogFilter] = useState('all');
+  const [fabButtons, setFabButtons] = useState([]);
+  const [editingFab, setEditingFab] = useState(null);
+  const [fabSaving, setFabSaving] = useState(false);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -322,6 +325,10 @@ const AdminPanel = () => {
         case 'syslog':
           const sysLogsData = await api('GET', '/admin/system-logs?limit=300');
           setSystemLogs(sysLogsData);
+          break;
+        case 'fabbar':
+          const fabData = await api('GET', '/admin/fab-buttons');
+          setFabButtons(fabData);
           break;
         default:
           break;
@@ -1705,6 +1712,276 @@ const AdminPanel = () => {
     </div>
   );
 
+  // ============ FAB BAR MANAGEMENT ============
+  const emptyFab = { role: 'customer', label: '', icon_svg: '', title: '', content_html: '', order: 0, is_active: true };
+
+  const handleSaveFab = async () => {
+    if (!editingFab) return;
+    if (!editingFab.label?.trim()) {
+      alert('Введите название кнопки');
+      return;
+    }
+    setFabSaving(true);
+    try {
+      if (editingFab.id) {
+        await api('PUT', `/admin/fab-buttons/${editingFab.id}`, editingFab);
+      } else {
+        await api('POST', '/admin/fab-buttons', editingFab);
+      }
+      const fabData = await api('GET', '/admin/fab-buttons');
+      setFabButtons(fabData);
+      setEditingFab(null);
+    } catch (e) {
+      alert(e?.message || 'Ошибка сохранения');
+    } finally {
+      setFabSaving(false);
+    }
+  };
+
+  const handleDeleteFab = async (id) => {
+    if (!window.confirm('Удалить кнопку?')) return;
+    try {
+      await api('DELETE', `/admin/fab-buttons/${id}`);
+      setFabButtons(fabButtons.filter(b => b.id !== id));
+    } catch (e) {
+      alert(e?.message || 'Ошибка удаления');
+    }
+  };
+
+  const handleFabSvgUpload = async (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/admin/fab-buttons/upload-svg`, {
+        method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Ошибка загрузки');
+      setEditingFab({ ...editingFab, icon_svg: data.svg });
+    } catch (e) {
+      alert(e.message || 'Ошибка загрузки SVG');
+    }
+  };
+
+  const renderFabBar = () => {
+    const roleLabel = (r) => r === 'customer' ? 'Клиент' : r === 'driver' ? 'Водитель' : 'Оба';
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900">Fab-бар</h2>
+            <p className="text-sm text-slate-500 mt-1">Настраиваемые кнопки нижнего меню (макс. 3 активных на роль). Первая иконка фиксированная: «Вызвать» / «Заявки».</p>
+          </div>
+          <button
+            onClick={() => setEditingFab({ ...emptyFab })}
+            className="btn-primary max-w-xs"
+            data-testid="fab-add-btn"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Добавить
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+          {fabButtons.length === 0 ? (
+            <div className="p-10 text-center text-slate-400">Пока нет настроенных кнопок</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Иконка</th>
+                  <th className="px-4 py-3">Название</th>
+                  <th className="px-4 py-3">Роль</th>
+                  <th className="px-4 py-3">Заголовок</th>
+                  <th className="px-4 py-3">Порядок</th>
+                  <th className="px-4 py-3">Статус</th>
+                  <th className="px-4 py-3 text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-sm">
+                {fabButtons.map((b) => (
+                  <tr key={b.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <span className="inline-flex w-7 h-7 items-center justify-center text-slate-700"
+                        dangerouslySetInnerHTML={{ __html: b.icon_svg || '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>' }}
+                      />
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{b.label}</td>
+                    <td className="px-4 py-3 text-slate-600">{roleLabel(b.role)}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[200px]">{b.title || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600">{b.order}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${b.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {b.is_active ? 'Активна' : 'Скрыта'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => setEditingFab({ ...b })}
+                        className="text-slate-600 hover:text-green-600 p-1.5"
+                        title="Редактировать"
+                        data-testid={`fab-edit-${b.id}`}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteFab(b.id)}
+                        className="text-slate-600 hover:text-red-600 p-1.5 ml-1"
+                        title="Удалить"
+                        data-testid={`fab-delete-${b.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {editingFab && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingFab(null)}>
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-slate-900">{editingFab.id ? 'Редактировать кнопку' : 'Новая кнопка'}</h3>
+                <button onClick={() => setEditingFab(null)} className="p-1.5 rounded-full hover:bg-slate-100">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Название (под иконкой)</label>
+                <input
+                  type="text"
+                  value={editingFab.label}
+                  onChange={(e) => setEditingFab({ ...editingFab, label: e.target.value })}
+                  className="input-field"
+                  maxLength={20}
+                  placeholder="Например: Рейтинг"
+                  data-testid="fab-edit-label"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Для кого</label>
+                <select
+                  value={editingFab.role}
+                  onChange={(e) => setEditingFab({ ...editingFab, role: e.target.value })}
+                  className="input-field"
+                  data-testid="fab-edit-role"
+                >
+                  <option value="customer">Клиент</option>
+                  <option value="driver">Водитель</option>
+                  <option value="both">Оба</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">SVG-иконка</label>
+                {editingFab.icon_svg && (
+                  <div className="mb-2 flex items-center gap-3">
+                    <span className="inline-flex w-10 h-10 items-center justify-center bg-slate-100 rounded-lg text-slate-700"
+                      dangerouslySetInnerHTML={{ __html: editingFab.icon_svg }}
+                    />
+                    <button
+                      onClick={() => setEditingFab({ ...editingFab, icon_svg: '' })}
+                      className="text-xs text-red-600 hover:underline"
+                    >Очистить</button>
+                  </div>
+                )}
+                <textarea
+                  value={editingFab.icon_svg}
+                  onChange={(e) => setEditingFab({ ...editingFab, icon_svg: e.target.value })}
+                  className="input-field font-mono text-xs"
+                  rows={4}
+                  placeholder='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">...</svg>'
+                  data-testid="fab-edit-svg"
+                />
+                <label className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-slate-50 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 text-sm">
+                  <Upload className="w-4 h-4 text-slate-500" />
+                  <span>Загрузить SVG-файл</span>
+                  <input
+                    type="file"
+                    accept=".svg,image/svg+xml"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleFabSvgUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-slate-400 mt-1">SVG должен использовать <code>currentColor</code> для адаптации к теме.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Заголовок окна (необязательно)</label>
+                <input
+                  type="text"
+                  value={editingFab.title || ''}
+                  onChange={(e) => setEditingFab({ ...editingFab, title: e.target.value })}
+                  className="input-field"
+                  placeholder="Что увидит пользователь при нажатии"
+                  data-testid="fab-edit-title"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Содержимое (HTML)</label>
+                <textarea
+                  value={editingFab.content_html || ''}
+                  onChange={(e) => setEditingFab({ ...editingFab, content_html: e.target.value })}
+                  className="input-field"
+                  rows={6}
+                  placeholder="<p>Можно использовать HTML: <b>жирный</b>, &lt;a href&gt;ссылки&lt;/a&gt;, списки.</p>"
+                  data-testid="fab-edit-content"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Порядок</label>
+                  <input
+                    type="number"
+                    value={editingFab.order || 0}
+                    onChange={(e) => setEditingFab({ ...editingFab, order: parseInt(e.target.value || '0', 10) })}
+                    className="input-field"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Статус</label>
+                  <select
+                    value={editingFab.is_active ? '1' : '0'}
+                    onChange={(e) => setEditingFab({ ...editingFab, is_active: e.target.value === '1' })}
+                    className="input-field"
+                  >
+                    <option value="1">Активна</option>
+                    <option value="0">Скрыта</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setEditingFab(null)}
+                  className="flex-1 px-4 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200"
+                >Отмена</button>
+                <button
+                  onClick={handleSaveFab}
+                  disabled={fabSaving}
+                  className="flex-1 btn-primary"
+                  data-testid="fab-save-btn"
+                >
+                  {fabSaving ? 'Сохраняем...' : 'Сохранить'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderBlockedDevices = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -2030,6 +2307,7 @@ const AdminPanel = () => {
     { id: 'syslog', icon: AlertTriangle, label: 'Системные' },
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
+    { id: 'fabbar', icon: Plus, label: 'Fab-бар' },
   ];
 
   return (
@@ -2091,6 +2369,7 @@ const AdminPanel = () => {
               {activeTab === 'syslog' && renderSystemLogs()}
               {activeTab === 'notifications' && renderNotifications()}
               {activeTab === 'settings' && renderSettings()}
+              {activeTab === 'fabbar' && renderFabBar()}
               {activeTab === 'updates' && renderUpdates()}
             </>
           )}

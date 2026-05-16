@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import YandexMap from '../components/YandexMap';
+import FabBar from '../components/FabBar';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -830,6 +831,17 @@ const CustomerMain = () => {
           {renderContent()}
         </div>
       </div>
+
+      {/* Fab bar — visible only when bottom-sheet is collapsed and no overlay open */}
+      {orderState === 'idle' && sheetCollapsed && !showMenu && !showProfile && !showHistory && !showProblem && (
+        <FabBar
+          role="customer"
+          primaryLabel="Вызвать"
+          onPrimaryClick={() => {
+            setSheetCollapsed(false);
+          }}
+        />
+      )}
 
       {/* Menu Drawer */}
       {showMenu && (

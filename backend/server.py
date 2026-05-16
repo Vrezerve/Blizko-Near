@@ -230,6 +230,24 @@ class MessageTemplate(BaseModel):
     key: str
     text: str
 
+class FabButton(BaseModel):
+    role: str  # 'customer' | 'driver' | 'both'
+    label: str
+    icon_svg: Optional[str] = ""
+    title: Optional[str] = ""
+    content_html: Optional[str] = ""
+    order: Optional[int] = 0
+    is_active: Optional[bool] = True
+
+class FabButtonUpdate(BaseModel):
+    role: Optional[str] = None
+    label: Optional[str] = None
+    icon_svg: Optional[str] = None
+    title: Optional[str] = None
+    content_html: Optional[str] = None
+    order: Optional[int] = None
+    is_active: Optional[bool] = None
+
 # ============ HELPERS ============
 
 def hash_password(password: str) -> str:
@@ -1949,6 +1967,113 @@ async def upload_map_bg(file: UploadFile = File(...), user: dict = Depends(get_a
     
     return {"success": True, "url": bg_url}
 
+# ============ FAB BUTTONS ============
+
+FAB_MAX_PER_ROLE = 3  # 3 custom + 1 fixed icon = 4 total in bar
+
+@settings_router.get("/fab-buttons")
+async def get_fab_buttons_public(role: str):
+    """Public endpoint — list active fab buttons for a role (customer or driver)."""
+    if role not in ("customer", "driver"):
+        raise HTTPException(status_code=400, detail="role must be 'customer' or 'driver'")
+    buttons = await db.fab_buttons.find(
+        {"is_active": True, "role": {"$in": [role, "both"]}},
+        {"_id": 0}
+    ).sort("order", 1).to_list(20)
+    return buttons
+
+@admin_router.get("/fab-buttons")
+async def list_fab_buttons(user: dict = Depends(get_admin_user)):
+    buttons = await db.fab_buttons.find({}, {"_id": 0}).sort("order", 1).to_list(100)
+    return buttons
+
+@admin_router.post("/fab-buttons")
+async def create_fab_button(data: FabButton, user: dict = Depends(get_admin_user)):
+    if data.role not in ("customer", "driver", "both"):
+        raise HTTPException(status_code=400, detail="role must be 'customer', 'driver' or 'both'")
+    # Enforce limit: count active buttons that affect target role
+    target_roles = [data.role] if data.role != "both" else ["customer", "driver"]
+    for r in target_roles:
+        count = await db.fab_buttons.count_documents({
+            "is_active": True,
+            "role": {"$in": [r, "both"]}
+        })
+        if data.is_active and count >= FAB_MAX_PER_ROLE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Достигнут лимит активных кнопок для роли '{r}' ({FAB_MAX_PER_ROLE} макс.)"
+            )
+    doc = {
+        "id": str(uuid.uuid4()),
+        "role": data.role,
+        "label": data.label,
+        "icon_svg": data.icon_svg or "",
+        "title": data.title or "",
+        "content_html": data.content_html or "",
+        "order": data.order or 0,
+        "is_active": data.is_active if data.is_active is not None else True,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.fab_buttons.insert_one(doc)
+    await log_action("fab_button_created", user["id"], {"id": doc["id"], "label": doc["label"]})
+    doc.pop("_id", None)
+    return doc
+
+@admin_router.put("/fab-buttons/{btn_id}")
+async def update_fab_button(btn_id: str, data: FabButtonUpdate, user: dict = Depends(get_admin_user)):
+    existing = await db.fab_buttons.find_one({"id": btn_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Кнопка не найдена")
+    update = {k: v for k, v in data.dict().items() if v is not None}
+    if "role" in update and update["role"] not in ("customer", "driver", "both"):
+        raise HTTPException(status_code=400, detail="role must be 'customer', 'driver' or 'both'")
+    # Enforce limit if activating
+    will_be_active = update.get("is_active", existing.get("is_active", True))
+    will_role = update.get("role", existing["role"])
+    if will_be_active:
+        target_roles = [will_role] if will_role != "both" else ["customer", "driver"]
+        for r in target_roles:
+            count = await db.fab_buttons.count_documents({
+                "is_active": True,
+                "role": {"$in": [r, "both"]},
+                "id": {"$ne": btn_id}
+            })
+            if count >= FAB_MAX_PER_ROLE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Достигнут лимит активных кнопок для роли '{r}' ({FAB_MAX_PER_ROLE} макс.)"
+                )
+    await db.fab_buttons.update_one({"id": btn_id}, {"$set": update})
+    await log_action("fab_button_updated", user["id"], {"id": btn_id})
+    updated = await db.fab_buttons.find_one({"id": btn_id}, {"_id": 0})
+    return updated
+
+@admin_router.delete("/fab-buttons/{btn_id}")
+async def delete_fab_button(btn_id: str, user: dict = Depends(get_admin_user)):
+    res = await db.fab_buttons.delete_one({"id": btn_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Кнопка не найдена")
+    await log_action("fab_button_deleted", user["id"], {"id": btn_id})
+    return {"success": True}
+
+@admin_router.post("/fab-buttons/upload-svg")
+async def upload_fab_svg(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload an SVG file and return its raw text content (inlined into icon_svg)."""
+    if file.content_type not in ("image/svg+xml", "text/xml", "application/xml"):
+        # Allow .svg with wrong mime sometimes
+        if not (file.filename or "").lower().endswith(".svg"):
+            raise HTTPException(status_code=400, detail="Допустим только формат SVG")
+    if file.size and file.size > 200 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 200 КБ")
+    content = await file.read()
+    try:
+        svg_text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="Файл не является валидным SVG (utf-8 decode failed)")
+    if "<svg" not in svg_text:
+        raise HTTPException(status_code=400, detail="Файл не содержит SVG-разметки")
+    return {"success": True, "svg": svg_text}
+
 # ============ WEBSOCKET ============
 
 @app.websocket("/ws/{user_id}")
@@ -1997,6 +2122,8 @@ async def startup():
     await db.orders.create_index("status")
     await db.logs.create_index("timestamp")
     await db.notifications.create_index("sent_at")
+    await db.fab_buttons.create_index("id", unique=True)
+    await db.fab_buttons.create_index("role")
     
     # Seed admin if not exists
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@taxi.local")
