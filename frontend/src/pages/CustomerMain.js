@@ -826,14 +826,14 @@ const CustomerMain = () => {
 
       {/* Bottom sheet */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, pointerEvents: 'none' }}>
-        <div style={{ pointerEvents: 'auto' }} className={`bottom-sheet slide-up ${sheetCollapsed ? 'collapsed' : ''}`}>
+        <div style={{ pointerEvents: 'auto' }} className={`bottom-sheet slide-up with-fabbar ${sheetCollapsed ? 'collapsed' : ''}`}>
           <div className="sheet-handle" onClick={() => setSheetCollapsed(!sheetCollapsed)} />
           {renderContent()}
         </div>
       </div>
 
-      {/* Fab bar — visible only when bottom-sheet is collapsed and no overlay open */}
-      {orderState === 'idle' && sheetCollapsed && !showMenu && !showProfile && !showHistory && !showProblem && (
+      {/* Fab bar — always visible at bottom (after auth, no overlay) */}
+      {!showMenu && !showProfile && !showHistory && !showProblem && (
         <FabBar
           role="customer"
           primaryLabel="Вызвать"

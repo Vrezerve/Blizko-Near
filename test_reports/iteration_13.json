@@ -1,0 +1,28 @@
+{
+  "summary": "Verified that FabBar is now ALWAYS visible at the bottom of /customer and /driver routes after auth, regardless of bottom-sheet expanded/collapsed state. Tested customer end-to-end (login +79001234567 / OTP 1234 / skip PIN) and driver (+79007654321). All 9 acceptance criteria from the review request pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/customer main", "issues": ["Bottom-sheet bounding box (height=530, ends y=768) overlaps FabBar top (y=755.9) by ~13px. Visually this falls inside the sheet's internal bottom padding (after the 'Свободно/Занято' stats row), so no actual content is obscured in the captured screenshot, but it is technically an overlap. Could be tightened to 76px exact gap if needed."]},
+      {"screen": "/driver main", "issues": ["Same ~13px sheet-box vs FabBar overlap as customer (sheet ends y=768, FabBar starts y=755.9). Content unaffected (visible region is internal padding)."]},
+      {"screen": "/driver console", "issues": ["Geolocation error still logs as console.error on every /driver mount: 'Location watch error: GeolocationPositionError'. Pre-existing from iteration 12, not regression."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_13.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "index.css .bottom-sheet.with-fabbar.collapsed transform is identical to .bottom-sheet.collapsed — the rule on line 124 is redundant and can be removed.",
+    "CustomerMain line 836 and DriverMain line 614 now correctly render FabBar based only on overlay flags (!showMenu && !showProfile && !showHistory [&& !showProblem on customer]). Clean and matches requirement.",
+    "Sheet bounding box extends 13px past the FabBar top — consider setting 'bottom: 80px' instead of 76px or reduce sheet's internal bottom padding to make the gap exact and avoid any overlap on smaller devices."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% — all 9 acceptance criteria verified"},
+  "test_credentials": "Customer +79001234567 OTP 1234; Driver +79007654321 OTP 1234 (no admin activation needed, already activated)",
+  "seed_data_creation": "None. Reused existing customer FAB buttons 'Помощь' and 'Рейтинг' (role=customer).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "FabBar is now unconditionally visible on /customer and /driver after auth, only hidden by full-screen overlays (menu/profile/history[/problem on customer]). The bottom-sheet is lifted via class 'with-fabbar' (bottom: 76px). Verified selectors: [data-testid='fab-bar'], [data-testid='fab-btn-primary'] (text 'Вызвать' for customer, 'На линии'/'Заявки' for driver), [data-testid='fab-btn-<id>'] for custom buttons, [data-testid='fab-modal']/[data-testid='fab-modal-close']. Top-left burger: [data-testid='menu-btn'] (40x40). Sheet handle: .sheet-handle. Customer auth requires 2 consent checkboxes before 'Продолжить'; driver auth has none. After OTP, click 'Пропустить' on pin-setup (single click) to land on /customer or /driver.",
+  "rca of the issue": "N/A — this iteration validates a UX policy change (FabBar always visible) rather than a bug fix. Implementation matches the request: (1) CSS .bottom-sheet.with-fabbar { bottom: 76px } lifts the sheet, (2) CustomerMain.js line 836 and DriverMain.js line 614 dropped the previous sheetCollapsed/orderState/currentOrder guards, only overlay flags remain. All flows verified live."
+}

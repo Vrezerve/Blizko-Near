@@ -117,6 +117,14 @@ h1, h2, h3, h4, h5, h6 {
   transform: translateX(-50%) translateY(calc(100% - 3rem));
 }
 
+/* When fab bar is present, lift the sheet above it */
+.bottom-sheet.with-fabbar {
+  bottom: 76px;
+}
+.bottom-sheet.with-fabbar.collapsed {
+  transform: translateX(-50%) translateY(calc(100% - 3rem));
+}
+
 .bottom-sheet .sheet-handle {
   width: 40px;
   height: 4px;

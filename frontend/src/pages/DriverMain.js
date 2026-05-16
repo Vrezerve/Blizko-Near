@@ -604,19 +604,18 @@ const DriverMain = () => {
         </div>
 
         <div className="flex-1 flex items-end">
-          <div className="bottom-sheet slide-up">
+          <div className="bottom-sheet slide-up with-fabbar">
             {renderContent()}
           </div>
         </div>
       </div>
 
-      {/* Fab bar — visible only when no active order and no overlay */}
-      {!currentOrder && !showMenu && !showProfile && !showHistory && (
+      {/* Fab bar — always visible at bottom (no overlay) */}
+      {!showMenu && !showProfile && !showHistory && (
         <FabBar
           role="driver"
           primaryLabel={isReady ? 'На линии' : 'Заявки'}
           onPrimaryClick={() => {
-            // Just close any overlay and keep main screen
             setShowMenu(false);
             setShowProfile(false);
             setShowHistory(false);
