@@ -1390,16 +1390,31 @@ const AdminPanel = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Иконка пина на карте (URL)</label>
-              <input
-                type="text"
-                data-testid="custom-pin-input"
-                value={settings.custom_pin_url || ''}
-                onChange={(e) => setSettings({...settings, custom_pin_url: e.target.value})}
-                className="input-field"
-                placeholder="https://example.com/pin.png (32x32 px)"
-              />
-              <p className="text-xs text-slate-400 mt-1">Кастомная иконка точки подачи на карте (оставьте пустым для стандартной)</p>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Иконка пина на карте</label>
+              {settings.custom_pin_url && (
+                <div className="flex items-center gap-3 mb-2">
+                  <img src={settings.custom_pin_url?.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings.custom_pin_url : settings.custom_pin_url} alt="pin" className="w-8 h-10 object-contain" />
+                  <span className="text-xs text-slate-400">Текущий пин</span>
+                </div>
+              )}
+              <label className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
+                <Upload className="w-4 h-4 text-slate-500" />
+                <span className="text-sm text-slate-600">Загрузить иконку (PNG/SVG, 32x40 px)</span>
+                <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const fd = new FormData();
+                  fd.append('file', file);
+                  try {
+                    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/upload-pin-icon`, {
+                      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd
+                    });
+                    const data = await res.json();
+                    if (data.url) setSettings({...settings, custom_pin_url: data.url});
+                  } catch(err) { alert('Ошибка загрузки'); }
+                  e.target.value = '';
+                }} />
+              </label>
             </div>
           </div>
         </div>
@@ -1433,15 +1448,63 @@ const AdminPanel = () => {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Фоновое изображение (URL)</label>
-              <input
-                type="text"
-                value={settings.map_bg_image_url || ''}
-                onChange={(e) => setSettings({...settings, map_bg_image_url: e.target.value})}
-                className="input-field"
-                placeholder="https://example.com/map-bg.jpg"
-              />
-              <p className="text-xs text-slate-400 mt-1">Изображение карты для фона (перекрывает сетку)</p>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Фоновое изображение</label>
+              {settings.map_bg_image_url && (
+                <div className="mb-2 rounded-lg overflow-hidden border border-slate-200" style={{height: 100}}>
+                  <img src={settings.map_bg_image_url?.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings.map_bg_image_url : settings.map_bg_image_url} alt="bg" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
+                <Upload className="w-4 h-4 text-slate-500" />
+                <span className="text-sm text-slate-600">Загрузить изображение (до 5 МБ)</span>
+                <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const fd = new FormData();
+                  fd.append('file', file);
+                  try {
+                    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/upload-map-bg`, {
+                      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd
+                    });
+                    const data = await res.json();
+                    if (data.url) setSettings({...settings, map_bg_image_url: data.url});
+                  } catch(err) { alert('Ошибка загрузки'); }
+                  e.target.value = '';
+                }} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Размер фона</label>
+                <select
+                  value={settings.map_bg_size || 'cover'}
+                  onChange={(e) => setSettings({...settings, map_bg_size: e.target.value})}
+                  className="input-field"
+                >
+                  <option value="cover">Cover (заполнить)</option>
+                  <option value="contain">Contain (вписать)</option>
+                  <option value="100% 100%">Растянуть</option>
+                  <option value="auto">Оригинальный размер</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Позиция фона</label>
+                <select
+                  value={settings.map_bg_position || 'center'}
+                  onChange={(e) => setSettings({...settings, map_bg_position: e.target.value})}
+                  className="input-field"
+                >
+                  <option value="center">По центру</option>
+                  <option value="top">Сверху</option>
+                  <option value="bottom">Снизу</option>
+                  <option value="left">Слева</option>
+                  <option value="right">Справа</option>
+                  <option value="top left">Сверху-слева</option>
+                  <option value="top right">Сверху-справа</option>
+                  <option value="bottom left">Снизу-слева</option>
+                  <option value="bottom right">Снизу-справа</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>

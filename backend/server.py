@@ -219,6 +219,8 @@ class SettingsUpdate(BaseModel):
     map_bg_color: Optional[str] = None
     map_grid_color: Optional[str] = None
     map_bg_image_url: Optional[str] = None
+    map_bg_size: Optional[str] = None
+    map_bg_position: Optional[str] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -1825,6 +1827,8 @@ async def get_public_settings():
         "map_bg_color": settings.get("map_bg_color", ""),
         "map_grid_color": settings.get("map_grid_color", ""),
         "map_bg_image_url": settings.get("map_bg_image_url", ""),
+        "map_bg_size": settings.get("map_bg_size", "cover"),
+        "map_bg_position": settings.get("map_bg_position", "center"),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),
@@ -1899,6 +1903,51 @@ async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_c
     await db.users.update_one({"id": user["id"]}, {"$set": {"avatar": avatar_url}})
     
     return {"success": True, "avatar_url": avatar_url}
+
+@settings_router.post("/upload-pin-icon")
+async def upload_pin_icon(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload custom map pin icon"""
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP, SVG, GIF")
+    
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    filename = f"pin_icon_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    pin_url = f"/api/uploads/{filename}"
+    await db.settings.update_one({"id": "main"}, {"$set": {"custom_pin_url": pin_url}}, upsert=True)
+    await log_action("pin_icon_updated", user["id"], {"filename": filename})
+    
+    return {"success": True, "url": pin_url}
+
+@settings_router.post("/upload-map-bg")
+async def upload_map_bg(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload map background image"""
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP, GIF")
+    
+    if file.size and file.size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 5 МБ")
+    
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    filename = f"map_bg_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    bg_url = f"/api/uploads/{filename}"
+    await db.settings.update_one({"id": "main"}, {"$set": {"map_bg_image_url": bg_url}}, upsert=True)
+    await log_action("map_bg_updated", user["id"], {"filename": filename})
+    
+    return {"success": True, "url": bg_url}
 
 # ============ WEBSOCKET ============
 
