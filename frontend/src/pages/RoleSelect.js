@@ -53,6 +53,7 @@ const RoleSelect = () => {
   }
 
   if (settings?.maintenance_mode) {
+    // Admin can always access — show link to admin panel
     return (
       <div className="app-container flex flex-col items-center justify-center p-6">
         <div className="map-background" />
@@ -61,7 +62,8 @@ const RoleSelect = () => {
             <Shield className="w-10 h-10 text-yellow-600" />
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-4">Технические работы</h1>
-          <p className="text-slate-600">{settings.maintenance_text || 'Сервис временно недоступен'}</p>
+          <p className="text-slate-600 mb-6">{settings.maintenance_text || 'Сервис временно недоступен'}</p>
+          <a href="/admin/login" className="text-sm text-slate-400 hover:text-slate-600 underline">Вход для администратора</a>
         </div>
       </div>
     );

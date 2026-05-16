@@ -1404,6 +1404,48 @@ const AdminPanel = () => {
           </div>
         </div>
 
+        {/* Map Background */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Фон карты (фолбэк)</h3>
+          <p className="text-xs text-slate-400 mb-4">Отображается когда ключ Яндекс Карт не задан</p>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Цвет фона</label>
+                <input
+                  type="text"
+                  value={settings.map_bg_color || '#f8fafc'}
+                  onChange={(e) => setSettings({...settings, map_bg_color: e.target.value})}
+                  className="input-field"
+                  placeholder="#f8fafc"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Цвет сетки</label>
+                <input
+                  type="text"
+                  value={settings.map_grid_color || '#e2e8f0'}
+                  onChange={(e) => setSettings({...settings, map_grid_color: e.target.value})}
+                  className="input-field"
+                  placeholder="#e2e8f0"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Фоновое изображение (URL)</label>
+              <input
+                type="text"
+                value={settings.map_bg_image_url || ''}
+                onChange={(e) => setSettings({...settings, map_bg_image_url: e.target.value})}
+                className="input-field"
+                placeholder="https://example.com/map-bg.jpg"
+              />
+              <p className="text-xs text-slate-400 mt-1">Изображение карты для фона (перекрывает сетку)</p>
+            </div>
+          </div>
+        </div>
+
         {/* SMTP */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">SMTP (Email)</h3>

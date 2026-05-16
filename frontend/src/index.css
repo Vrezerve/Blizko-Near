@@ -34,37 +34,49 @@
 }
 
 body {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: #f8fafc;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
 .app-container {
   width: 100%;
-  max-width: 28rem;
+  max-width: 100%;
   margin: 0 auto;
   min-height: 100dvh;
   position: relative;
   overflow: hidden;
   background-color: #f8fafc;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+@media (min-width: 768px) {
+  .app-container {
+    max-width: 48rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-container {
+    max-width: 28rem;
+  }
 }
 
 .map-background {
   position: absolute;
   inset: 0;
-  background-color: #f8fafc;
+  background-color: var(--map-bg-color, #f8fafc);
   background-image: 
-    linear-gradient(to right, #e2e8f0 1px, transparent 1px),
-    linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
-  background-size: 32px 32px;
+    linear-gradient(to right, var(--map-grid-color, #e2e8f0) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--map-grid-color, #e2e8f0) 1px, transparent 1px);
+  background-size: var(--map-grid-size, 32px) var(--map-grid-size, 32px);
   z-index: 0;
 }
 
@@ -74,7 +86,7 @@ h1, h2, h3, h4, h5, h6 {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 28rem;
+  max-width: 100%;
   background: white;
   border-radius: 1.5rem 1.5rem 0 0;
   box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.08);
@@ -82,6 +94,14 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1.5rem;
   padding-bottom: 2rem;
   transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+@media (min-width: 768px) {
+  .bottom-sheet { max-width: 48rem; }
+}
+
+@media (min-width: 1024px) {
+  .bottom-sheet { max-width: 28rem; }
 }
 
 .bottom-sheet.collapsed {

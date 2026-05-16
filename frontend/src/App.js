@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'sonner';
+import axios from 'axios';
 
 import RoleSelect from './pages/RoleSelect';
 import CustomerAuth from './pages/CustomerAuth';
@@ -14,6 +15,19 @@ import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
 
 import './App.css';
+
+// Load map CSS vars from settings
+const MapStyleLoader = () => {
+  useEffect(() => {
+    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/settings/public`).then(res => {
+      const s = res.data;
+      const root = document.documentElement;
+      if (s.map_bg_color) root.style.setProperty('--map-bg-color', s.map_bg_color);
+      if (s.map_grid_color) root.style.setProperty('--map-grid-color', s.map_grid_color);
+    }).catch(() => {});
+  }, []);
+  return null;
+};
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth();
@@ -83,6 +97,7 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <MapStyleLoader />
         <AppRoutes />
         <Toaster position="top-center" richColors />
       </BrowserRouter>

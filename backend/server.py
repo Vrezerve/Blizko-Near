@@ -216,6 +216,9 @@ class SettingsUpdate(BaseModel):
     log_level: Optional[str] = None
     custom_pin_url: Optional[str] = None
     eta_options: Optional[str] = None
+    map_bg_color: Optional[str] = None
+    map_grid_color: Optional[str] = None
+    map_bg_image_url: Optional[str] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -375,10 +378,11 @@ async def send_notification(user_id: str, title: str, message: str, notification
     return notification
 
 async def send_email(to_email: str, subject: str, body: str, html_body: str = None):
-    """Send email via SMTP"""
+    """Send email via SMTP in background thread"""
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
+    import asyncio
     
     settings = await db.settings.find_one({"id": "main"})
     if not settings:
@@ -394,30 +398,45 @@ async def send_email(to_email: str, subject: str, body: str, html_body: str = No
         await system_log("warning", "email", f"SMTP не настроен, письмо не отправлено: {subject}")
         return False
     
+    def _send():
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["From"] = smtp_from
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            if html_body:
+                msg.attach(MIMEText(html_body, "html", "utf-8"))
+            
+            if int(smtp_port) == 465:
+                server = smtplib.SMTP_SSL(smtp_host, int(smtp_port), timeout=10)
+            else:
+                server = smtplib.SMTP(smtp_host, int(smtp_port), timeout=10)
+                server.starttls()
+            
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_from, to_email, msg.as_string())
+            server.quit()
+            return True
+        except Exception as e:
+            return str(e)
+    
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = smtp_from
-        msg["To"] = to_email
-        msg["Subject"] = subject
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(loop.run_in_executor(None, _send), timeout=15)
         
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        if html_body:
-            msg.attach(MIMEText(html_body, "html", "utf-8"))
-        
-        if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+        if result is True:
+            await system_log("info", "email", f"Email отправлен: {subject}", {"to": to_email})
+            return True
         else:
-            server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-            server.starttls()
-        
-        server.login(smtp_user, smtp_password)
-        server.sendmail(smtp_from, to_email, msg.as_string())
-        server.quit()
-        
-        await system_log("info", "email", f"Email отправлен: {subject}", {"to": to_email})
-        return True
+            await system_log("error", "email", f"Ошибка SMTP: {result}", {"to": to_email, "subject": subject})
+            return False
+    except asyncio.TimeoutError:
+        await system_log("error", "email", "SMTP таймаут (15 сек)", {"to": to_email, "subject": subject})
+        return False
     except Exception as e:
-        await system_log("error", "email", f"Ошибка SMTP: {str(e)}", {"to": to_email, "subject": subject})
+        await system_log("error", "email", f"Ошибка: {str(e)}", {"to": to_email, "subject": subject})
         return False
 
 async def send_admin_email(subject: str, body: str):
@@ -1803,6 +1822,9 @@ async def get_public_settings():
         "active_map_provider": settings.get("active_map_provider", "yandex"),
         "custom_pin_url": settings.get("custom_pin_url", ""),
         "eta_options": settings.get("eta_options", "1,2,3,5"),
+        "map_bg_color": settings.get("map_bg_color", ""),
+        "map_grid_color": settings.get("map_grid_color", ""),
+        "map_bg_image_url": settings.get("map_bg_image_url", ""),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),
