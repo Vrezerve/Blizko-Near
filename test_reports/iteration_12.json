@@ -1,0 +1,26 @@
+{
+  "summary": "Customer FabBar live UI flow verified end-to-end after active orders were cleared. Login (phone+2 checkboxes+OTP), pin-setup skip, sheet handle collapse, FabBar reveal, custom button modal open/close, and primary button (expand sheet → FabBar hides) all work correctly. Driver flow also verified: driver +79007654321 logs in (no consent checkboxes on driver auth), lands on /driver, FabBar visible with primary 'На линии' button. Driver was already activated; no admin activation step required.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Customer/Driver auth screens", "issues": ["Map background (teal grid / map_bg_color) bleeds into auth pages — known cosmetic from iteration 11; not part of this test scope."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_12.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FabBar.jsx renders icon_svg and content_html via dangerouslySetInnerHTML — fine for admin-only authoring; recommend DOMPurify if non-admin roles ever get write access.",
+    "Driver auth screen does NOT have consent checkboxes while customer auth does — inconsistent UX (legal compliance review may want consents on both flows).",
+    "Driver /driver page shows console: 'Location watch error: GeolocationPositionError' on every load — geolocation is denied in the browser sandbox; should fail silently or show inline status instead of console.error."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "Customer FabBar full flow 100% (login, sheet collapse, FabBar render, custom-button modal open/close, primary expand-sheet). Driver FabBar 100% (login + primary 'На линии' visible)."},
+  "test_credentials": "Customer +79001234567 OTP 1234; Driver +79007654321 OTP 1234; Admin admin@taxi.local/admin123 (not used this iteration).",
+  "seed_data_creation": "None this iteration. Reused existing customer FAB buttons in DB: 'Помощь' (id=a8c16e65...) and 'Рейтинг' (id=35f05932...).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Customer FabBar end-to-end is fully verified. Selectors confirmed working: [data-testid='fab-bar'], [data-testid='fab-btn-primary'] (Вызвать for customer / На линии for driver), [data-testid^='fab-btn-'] for custom buttons (e.g., fab-btn-a8c16e65... for Помощь, fab-btn-35f05932... for Рейтинг), [data-testid='fab-modal'] and [data-testid='fab-modal-close']. Sheet handle: .sheet-handle (single CSS class, click toggles collapse). After login on customer flow there are TWO consent checkboxes (Принимаю условия + Согласие); both must be checked before 'Продолжить' is enabled. Driver auth has zero consent checkboxes. pin-setup needs only one click on 'Пропустить' (single skip) before landing on /customer or /driver. No driver-role FAB buttons exist in DB; admin can add via /admin Fab-бар tab with role=driver.",
+  "rca of the issue": "Previously (iteration 11) customer FabBar could not be tested because customer had an active order (orderState !== 'idle'). Main agent cancelled all active orders in DB → orderState now returns 'idle' → FabBar render guard (orderState==='idle' && sheetCollapsed && !showMenu && !showProfile && !showHistory && !showProblem) now passes once sheet is collapsed. No code change required."
+}
