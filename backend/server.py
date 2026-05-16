@@ -1441,19 +1441,27 @@ async def admin_update_credentials(data: AdminCredentialsUpdate, user: dict = De
         "email_changed": "email" in update,
         "password_changed": "password_hash" in update
     })
-    # Update test_credentials.md if admin changes (so test agents see latest)
+    # Update test_credentials.md only when password changes (preserve last-known password otherwise)
     try:
-        admin_after = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write("# Test Credentials\n\n")
-            f.write(f"## Admin\n- Email: {admin_after['email']}\n")
-            if data.new_password:
+        if data.new_password:
+            admin_after = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+            os.makedirs("/app/memory", exist_ok=True)
+            with open("/app/memory/test_credentials.md", "w") as f:
+                f.write("# Test Credentials\n\n")
+                f.write(f"## Admin\n- Email: {admin_after['email']}\n")
                 f.write(f"- Password: {data.new_password}\n\n")
-            else:
-                f.write("- Password: (unchanged)\n\n")
-            f.write("## Test Customer\n- Phone: +79001234567\n- SMS Code: 1234\n\n")
-            f.write("## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
+                f.write("## Test Customer\n- Phone: +79001234567\n- SMS Code: 1234\n\n")
+                f.write("## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
+        elif data.new_email:
+            # Only rewrite the Email line in the existing file
+            path = "/app/memory/test_credentials.md"
+            if os.path.exists(path):
+                with open(path) as f:
+                    content = f.read()
+                import re as _re
+                content = _re.sub(r"(- Email:\s*).*", f"- Email: {data.new_email.strip().lower()}", content, count=1)
+                with open(path, "w") as f:
+                    f.write(content)
     except Exception:
         pass
     return {"success": True, "email": update.get("email", admin["email"])}

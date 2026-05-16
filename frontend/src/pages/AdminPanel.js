@@ -229,7 +229,7 @@ const RouteMapModal = ({ orderRoute, onClose }) => {
 
 const AdminPanel = () => {
   const navigate = useNavigate();
-  const { user, token, logout, api } = useAuth();
+  const { user, token, logout, api, refreshUser } = useAuth();
   
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
@@ -2022,6 +2022,8 @@ const AdminPanel = () => {
       const res = await api('POST', '/admin/me/credentials', payload);
       setCredMsg({ type: 'success', text: 'Данные обновлены. Используйте новые при следующем входе.' });
       setCredForm({ current_password: '', new_email: res.email || credForm.new_email, new_password: '', confirm_password: '' });
+      // Refresh user state so next change in same session detects the new email correctly
+      try { await refreshUser?.(); } catch (_) {}
     } catch (e) {
       setCredMsg({ type: 'error', text: e?.message || 'Ошибка обновления' });
     } finally {
