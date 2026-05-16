@@ -23,18 +23,23 @@ const YandexMap = ({
 
   // Load script
   useEffect(() => {
-    if (window.ymaps) { setYmapsLoaded(true); return; }
+    const markReady = () => {
+      if (!window.ymaps) return;
+      if (typeof window.ymaps.ready === 'function') {
+        window.ymaps.ready(() => setYmapsLoaded(true));
+      } else if (typeof window.ymaps.Map === 'function') {
+        setYmapsLoaded(true);
+      }
+    };
+    if (window.ymaps) { markReady(); return; }
     if (document.querySelector('script[src*="api-maps.yandex.ru"]')) {
-      const i = setInterval(() => { if (window.ymaps) { setYmapsLoaded(true); clearInterval(i); } }, 200);
+      const i = setInterval(() => { if (window.ymaps) { clearInterval(i); markReady(); } }, 200);
       return () => clearInterval(i);
     }
     const s = document.createElement('script');
     s.src = `https://api-maps.yandex.ru/2.1/?apikey=${apiKey}&lang=ru_RU`;
     s.async = true;
-    s.onload = () => {
-      const w = () => { if (window.ymaps?.ready) window.ymaps.ready(() => setYmapsLoaded(true)); else setTimeout(w, 100); };
-      w();
-    };
+    s.onload = () => markReady();
     document.head.appendChild(s);
   }, [apiKey]);
 
@@ -42,12 +47,19 @@ const YandexMap = ({
   useEffect(() => {
     if (!ymapsLoaded || !mapRef.current || mapInstanceRef.current) return;
     const ymaps = window.ymaps;
+    if (!ymaps || typeof ymaps.Map !== 'function') return;
 
-    const map = new ymaps.Map(mapRef.current, {
-      center: userLocation ? [userLocation.lat, userLocation.lng] : center,
-      zoom,
-      controls: []
-    }, { suppressMapOpenBlock: true, yandexMapDisablePoiInteractivity: true });
+    let map;
+    try {
+      map = new ymaps.Map(mapRef.current, {
+        center: userLocation ? [userLocation.lat, userLocation.lng] : center,
+        zoom,
+        controls: []
+      }, { suppressMapOpenBlock: true, yandexMapDisablePoiInteractivity: true });
+    } catch (err) {
+      console.error('YandexMap init failed:', err);
+      return;
+    }
 
     // Enable all behaviors for proper mobile experience
     map.behaviors.enable(['drag', 'multiTouch', 'dblClickZoom']);

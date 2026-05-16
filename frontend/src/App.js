@@ -13,6 +13,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
 import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import './App.css';
 
@@ -109,7 +110,9 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <MapStyleLoader />
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
         <Toaster position="top-center" richColors />
       </BrowserRouter>
     </AuthProvider>

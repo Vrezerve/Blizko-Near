@@ -10,6 +10,7 @@ import {
   ToggleLeft, ToggleRight, Archive, Plus
 } from 'lucide-react';
 import YandexMap from '../components/YandexMap';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Admin Map Component showing online drivers
 const AdminMap = ({ drivers, onDriverClick, apiKey }) => {
@@ -23,7 +24,13 @@ const AdminMap = ({ drivers, onDriverClick, apiKey }) => {
     }));
     return (
       <div className="relative w-full h-96 rounded-xl overflow-hidden">
-        <YandexMap apiKey={apiKey} markers={markers} zoom={12} />
+        <ErrorBoundary fallback={
+          <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-500 text-sm">
+            Не удалось загрузить карту
+          </div>
+        }>
+          <YandexMap apiKey={apiKey} markers={markers} zoom={12} />
+        </ErrorBoundary>
         <div className="absolute top-4 left-4 bg-white/90 backdrop-blur rounded-lg px-3 py-2 text-sm z-10">
           <p className="font-medium text-slate-900">Водители онлайн: {drivers.length}</p>
         </div>

@@ -1972,8 +1972,10 @@ async def upload_map_bg(file: UploadFile = File(...), user: dict = Depends(get_a
 FAB_MAX_PER_ROLE = 3  # 3 custom + 1 fixed icon = 4 total in bar
 
 @settings_router.get("/fab-buttons")
-async def get_fab_buttons_public(role: str):
+async def get_fab_buttons_public(role: Optional[str] = None):
     """Public endpoint — list active fab buttons for a role (customer or driver)."""
+    if not role:
+        raise HTTPException(status_code=400, detail="query parameter 'role' is required")
     if role not in ("customer", "driver"):
         raise HTTPException(status_code=400, detail="role must be 'customer' or 'driver'")
     buttons = await db.fab_buttons.find(
