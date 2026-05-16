@@ -1,0 +1,40 @@
+{
+  "summary": "Backend-only testing of new map customization upload endpoints (POST /api/settings/upload-pin-icon, POST /api/settings/upload-map-bg) and the updated /api/settings/public payload. Created /app/backend/tests/test_map_uploads.py with 12 pytest cases covering happy path, persistence, static-file serving, content-type validation, anonymous and customer (non-admin) auth rejection, and map_bg_size/map_bg_position persistence via POST /api/settings/. All 12 tests pass (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/settings/upload-pin-icon", "issue": "No max-size cap (review_request mentions 'pin no limit' so this is intentional, but a sane cap e.g. 2MB would be safer to prevent disk-fill DoS)"},
+      {"endpoint": "POST /api/settings/upload-pin-icon & upload-map-bg", "issue": "Old files are never cleaned up from /app/backend/uploads when settings are overwritten — orphaned image files accumulate on disk."},
+      {"endpoint": "POST /api/settings/upload-map-bg", "issue": "Content-type is trusted from the multipart header; the file bytes themselves are not validated (a renamed .png containing arbitrary data would pass)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_map_uploads.py",
+    "/app/test_reports/pytest/iter9_map_uploads.xml"
+  ],
+  "action_items": [
+    "Optional: add a max file size for pin uploads (e.g. 2MB) and content-bytes sniffing for both endpoints.",
+    "Optional: delete the previously-stored map_bg_image_url / custom_pin_url file from disk when overwritten to prevent orphaned files."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2049 lines — should be split into modules (settings, auth, admin, orders) for maintainability (>700 line guideline).",
+    "Allowed types are inferred from the request Content-Type header only. Consider validating file magic bytes for image uploads.",
+    "Uploaded filenames use uuid4 hex[:8] (32 bits) — collisions are unlikely but possible; consider hex[:16].",
+    "Old uploaded files are never deleted when settings are updated → disk leak over time."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_map_uploads.py (new)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "admin@taxi.local / admin123 (admin login OK); customer +79001234567 with test code 1234 in test_mode (OK)",
+  "seed_data_creation": "None. Test uploads create transient files under /app/backend/uploads (pin_icon_*, map_bg_*); map_bg_size/map_bg_position are restored to cover/center after the persistence test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Reusable suite at /app/backend/tests/test_map_uploads.py (run with REACT_APP_BACKEND_URL env var set). Covers: public settings shape, pin icon upload (PNG+SVG), map bg upload (PNG, SVG rejection), text/plain rejection, anonymous + customer auth rejection, and map_bg_size/position persistence. Note: settings save endpoint is POST /api/settings/ (NOT PUT /api/admin/settings as the review_request hinted). Customer OTP login requires device_id and uses /auth/send-code & /auth/verify-code (not /auth/request-otp).",
+  "rca of the issue": "N/A — no functional bugs found. All 12 backend tests passed."
+}

@@ -794,7 +794,7 @@ const CustomerMain = () => {
           showUserPin={true}
           etaMinutes={currentOrder?.eta_minutes || etaMinutes}
           onMapClick={handleMapClick}
-          customPinUrl={settings?.custom_pin_url || ''}
+          customPinUrl={settings?.custom_pin_url ? (settings.custom_pin_url.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings.custom_pin_url : settings.custom_pin_url) : ''}
         />
       ) : (
         <TrackingMap 

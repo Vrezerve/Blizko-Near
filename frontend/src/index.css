@@ -74,9 +74,18 @@ h1, h2, h3, h4, h5, h6 {
   inset: 0;
   background-color: var(--map-bg-color, #f8fafc);
   background-image: 
+    var(--map-bg-image, none),
     linear-gradient(to right, var(--map-grid-color, #e2e8f0) 1px, transparent 1px),
     linear-gradient(to bottom, var(--map-grid-color, #e2e8f0) 1px, transparent 1px);
-  background-size: var(--map-grid-size, 32px) var(--map-grid-size, 32px);
+  background-size: 
+    var(--map-bg-size, cover),
+    var(--map-grid-size, 32px) var(--map-grid-size, 32px),
+    var(--map-grid-size, 32px) var(--map-grid-size, 32px);
+  background-position:
+    var(--map-bg-position, center),
+    0 0,
+    0 0;
+  background-repeat: no-repeat, repeat, repeat;
   z-index: 0;
 }
 

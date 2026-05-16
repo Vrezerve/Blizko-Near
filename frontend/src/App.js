@@ -22,8 +22,19 @@ const MapStyleLoader = () => {
     axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/settings/public`).then(res => {
       const s = res.data;
       const root = document.documentElement;
+      const toAbs = (u) => (u && u.startsWith('/')) ? `${process.env.REACT_APP_BACKEND_URL}${u}` : u;
       if (s.map_bg_color) root.style.setProperty('--map-bg-color', s.map_bg_color);
       if (s.map_grid_color) root.style.setProperty('--map-grid-color', s.map_grid_color);
+      if (s.map_bg_image_url) {
+        root.style.setProperty('--map-bg-image', `url("${toAbs(s.map_bg_image_url)}")`);
+      } else {
+        root.style.setProperty('--map-bg-image', 'none');
+      }
+      root.style.setProperty('--map-bg-size', s.map_bg_size || 'cover');
+      root.style.setProperty('--map-bg-position', s.map_bg_position || 'center');
+      if (s.custom_pin_url) {
+        root.style.setProperty('--custom-pin-url', `url("${toAbs(s.custom_pin_url)}")`);
+      }
     }).catch(() => {});
   }, []);
   return null;
