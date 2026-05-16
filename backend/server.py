@@ -230,6 +230,11 @@ class MessageTemplate(BaseModel):
     key: str
     text: str
 
+class AdminCredentialsUpdate(BaseModel):
+    current_password: str
+    new_email: Optional[str] = None
+    new_password: Optional[str] = None
+
 class FabButton(BaseModel):
     role: str  # 'customer' | 'driver' | 'both'
     label: str
@@ -1399,6 +1404,59 @@ async def admin_login(data: AdminLogin):
     await log_action("admin_login", admin["id"], {"email": data.email})
     
     return {"token": token, "user": admin}
+
+@admin_router.get("/me")
+async def admin_get_me(user: dict = Depends(get_admin_user)):
+    admin = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    if not admin:
+        raise HTTPException(status_code=404, detail="Администратор не найден")
+    return admin
+
+@admin_router.post("/me/credentials")
+async def admin_update_credentials(data: AdminCredentialsUpdate, user: dict = Depends(get_admin_user)):
+    admin = await db.users.find_one({"id": user["id"]})
+    if not admin:
+        raise HTTPException(status_code=404, detail="Администратор не найден")
+    # Verify current password
+    if not verify_password(data.current_password, admin.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Текущий пароль неверен")
+    update = {}
+    if data.new_email:
+        new_email = data.new_email.strip().lower()
+        if "@" not in new_email or len(new_email) < 5:
+            raise HTTPException(status_code=400, detail="Некорректный email")
+        # Check email collision (other admin/user with same email)
+        existing = await db.users.find_one({"email": new_email, "id": {"$ne": user["id"]}})
+        if existing:
+            raise HTTPException(status_code=400, detail="Этот email уже используется")
+        update["email"] = new_email
+    if data.new_password:
+        if len(data.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Пароль должен быть минимум 6 символов")
+        update["password_hash"] = hash_password(data.new_password)
+    if not update:
+        raise HTTPException(status_code=400, detail="Нечего обновлять")
+    await db.users.update_one({"id": user["id"]}, {"$set": update})
+    await log_action("admin_credentials_updated", user["id"], {
+        "email_changed": "email" in update,
+        "password_changed": "password_hash" in update
+    })
+    # Update test_credentials.md if admin changes (so test agents see latest)
+    try:
+        admin_after = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+        os.makedirs("/app/memory", exist_ok=True)
+        with open("/app/memory/test_credentials.md", "w") as f:
+            f.write("# Test Credentials\n\n")
+            f.write(f"## Admin\n- Email: {admin_after['email']}\n")
+            if data.new_password:
+                f.write(f"- Password: {data.new_password}\n\n")
+            else:
+                f.write("- Password: (unchanged)\n\n")
+            f.write("## Test Customer\n- Phone: +79001234567\n- SMS Code: 1234\n\n")
+            f.write("## Test Driver\n- Phone: +79007654321\n- SMS Code: 1234\n- (needs admin activation)\n")
+    except Exception:
+        pass
+    return {"success": True, "email": update.get("email", admin["email"])}
 
 @admin_router.get("/users")
 async def get_all_users(role: Optional[str] = None, user: dict = Depends(get_admin_user)):

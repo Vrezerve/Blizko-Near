@@ -261,6 +261,9 @@ const AdminPanel = () => {
   const [fabButtons, setFabButtons] = useState([]);
   const [editingFab, setEditingFab] = useState(null);
   const [fabSaving, setFabSaving] = useState(false);
+  const [credForm, setCredForm] = useState({ current_password: '', new_email: '', new_password: '', confirm_password: '' });
+  const [credSaving, setCredSaving] = useState(false);
+  const [credMsg, setCredMsg] = useState(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -336,6 +339,11 @@ const AdminPanel = () => {
         case 'fabbar':
           const fabData = await api('GET', '/admin/fab-buttons');
           setFabButtons(fabData);
+          break;
+        case 'profile':
+          // Just init form fields with current admin email
+          setCredForm({ current_password: '', new_email: user?.email || '', new_password: '', confirm_password: '' });
+          setCredMsg(null);
           break;
         default:
           break;
@@ -1989,6 +1997,122 @@ const AdminPanel = () => {
     );
   };
 
+  // ============ PROFILE (admin credentials) ============
+  const handleSaveCredentials = async () => {
+    setCredMsg(null);
+    if (!credForm.current_password) {
+      setCredMsg({ type: 'error', text: 'Введите текущий пароль' });
+      return;
+    }
+    const wantEmailChange = credForm.new_email && credForm.new_email !== (user?.email || '');
+    const wantPasswordChange = !!credForm.new_password;
+    if (!wantEmailChange && !wantPasswordChange) {
+      setCredMsg({ type: 'error', text: 'Измените email или пароль' });
+      return;
+    }
+    if (wantPasswordChange && credForm.new_password !== credForm.confirm_password) {
+      setCredMsg({ type: 'error', text: 'Пароли не совпадают' });
+      return;
+    }
+    setCredSaving(true);
+    try {
+      const payload = { current_password: credForm.current_password };
+      if (wantEmailChange) payload.new_email = credForm.new_email;
+      if (wantPasswordChange) payload.new_password = credForm.new_password;
+      const res = await api('POST', '/admin/me/credentials', payload);
+      setCredMsg({ type: 'success', text: 'Данные обновлены. Используйте новые при следующем входе.' });
+      setCredForm({ current_password: '', new_email: res.email || credForm.new_email, new_password: '', confirm_password: '' });
+    } catch (e) {
+      setCredMsg({ type: 'error', text: e?.message || 'Ошибка обновления' });
+    } finally {
+      setCredSaving(false);
+    }
+  };
+
+  const renderProfile = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900">Профиль администратора</h2>
+        <p className="text-sm text-slate-500 mt-1">Смена email и пароля. Для подтверждения операции введите текущий пароль.</p>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 max-w-lg space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Текущий email</label>
+          <div className="px-3 py-2 bg-slate-50 rounded-lg text-slate-600 text-sm">{user?.email || '—'}</div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Новый email</label>
+          <input
+            type="email"
+            value={credForm.new_email}
+            onChange={(e) => setCredForm({ ...credForm, new_email: e.target.value })}
+            className="input-field"
+            placeholder="new-admin@taxi.local"
+            data-testid="profile-email-input"
+            autoComplete="off"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Новый пароль</label>
+            <input
+              type="password"
+              value={credForm.new_password}
+              onChange={(e) => setCredForm({ ...credForm, new_password: e.target.value })}
+              className="input-field"
+              placeholder="Минимум 6 символов"
+              data-testid="profile-password-input"
+              autoComplete="new-password"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Подтверждение</label>
+            <input
+              type="password"
+              value={credForm.confirm_password}
+              onChange={(e) => setCredForm({ ...credForm, confirm_password: e.target.value })}
+              className="input-field"
+              placeholder="Повторите пароль"
+              data-testid="profile-password-confirm"
+              autoComplete="new-password"
+            />
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-slate-100">
+          <label className="block text-sm font-medium text-slate-700 mb-1">Текущий пароль *</label>
+          <input
+            type="password"
+            value={credForm.current_password}
+            onChange={(e) => setCredForm({ ...credForm, current_password: e.target.value })}
+            className="input-field"
+            placeholder="Введите текущий пароль"
+            data-testid="profile-current-password"
+            autoComplete="current-password"
+          />
+        </div>
+
+        {credMsg && (
+          <div className={`px-4 py-2 rounded-lg text-sm ${credMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`} data-testid="profile-msg">
+            {credMsg.text}
+          </div>
+        )}
+
+        <button
+          onClick={handleSaveCredentials}
+          disabled={credSaving}
+          className="btn-primary w-full"
+          data-testid="profile-save-btn"
+        >
+          {credSaving ? 'Сохраняем...' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
+  );
+
   const renderBlockedDevices = () => (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -2315,6 +2439,7 @@ const AdminPanel = () => {
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
     { id: 'fabbar', icon: Plus, label: 'Fab-бар' },
+    { id: 'profile', icon: Key, label: 'Профиль' },
   ];
 
   return (
@@ -2377,6 +2502,7 @@ const AdminPanel = () => {
               {activeTab === 'notifications' && renderNotifications()}
               {activeTab === 'settings' && renderSettings()}
               {activeTab === 'fabbar' && renderFabBar()}
+              {activeTab === 'profile' && renderProfile()}
               {activeTab === 'updates' && renderUpdates()}
             </>
           )}

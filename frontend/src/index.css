@@ -120,7 +120,7 @@ h1, h2, h3, h4, h5, h6 {
 /* When fab bar is present, sheet extends to bottom edge; padding leaves room for fab-bar */
 .bottom-sheet.with-fabbar {
   bottom: 0;
-  padding-bottom: 60px;
+  padding-bottom: 85px;
 }
 .bottom-sheet.with-fabbar.collapsed {
   bottom: 56px;

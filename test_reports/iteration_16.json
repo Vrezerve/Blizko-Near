@@ -1,0 +1,35 @@
+{
+  "summary": "Verified both shipped changes end-to-end: (1) backend admin profile endpoints GET /api/admin/me and POST /api/admin/me/credentials with all validation paths; (2) frontend Admin Panel 'Профиль' tab with all data-testids functional; (3) CSS padding-bottom: 85px applied to .bottom-sheet.with-fabbar. Admin credentials restored to admin@taxi.local/admin123 at end of testing. test_credentials.md sync verified — and reset to original after tests.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Admin Profile: restore email", "issue": "Frontend caches initial user.email from /admin/me at mount and uses it to decide wantEmailChange. After a successful email change the FE state res.email is set as new_email but user.email cached state is NOT refreshed — so attempting to immediately submit a SECOND change that 'restores' to the originally-loaded value is silently blocked by the FE guard with msg 'Измените email или пароль'. Backend still has the changed email. Fix: refresh user via loadMe() after successful credentials update, or rely solely on backend validation.", "affected_selectors": ["profile-save-btn", "profile-msg"], "priority": "MEDIUM"}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin_profile.py",
+    "/app/test_reports/pytest/admin_profile_results.xml"
+  ],
+  "action_items": [
+    "After a successful POST /admin/me/credentials, also reload the admin user state in AdminPanel (e.g., call /admin/me) so subsequent email/password edits from the SAME session correctly detect new vs current email. Currently the FE guard uses stale user?.email and prevents restore-style edits without a page reload."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1424-1432 — email collision check correctly excludes current user by id. Good.",
+    "server.py:1444-1458 — test_credentials.md is rewritten on every successful credentials update. When ONLY email changes (no new_password) the file records 'Password: (unchanged)' instead of the actual current password. This is misleading for next testing agents and could break automated test fixtures. Suggestion: persist the last-known plaintext or omit the password line when unchanged AND warn, or better, keep the file authoritative by not overwriting the password line when not changed (leave previous content intact). Currently the agent had to manually restore the file. LOW priority but worth fixing.",
+    "AdminPanel.js handleSaveCredentials does not call loadMe() after success → causes 'restore email' UX issue described above. Recommended fix is small: after success refetch user via /admin/me and update local state.",
+    "Backend allows empty Authorization (only cookie). Cookie-based auth path was not exercised — only Bearer header was tested. /admin/login does not set httpOnly cookie (only returns JSON token), so cookie flow is currently unused for admin and that's consistent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin_profile.py (new)",
+    "/app/memory/test_credentials.md (restored to admin@taxi.local/admin123 after tests)"
+  ],
+  "success_rate": {"backend": "100% (11 passed, 1 skipped — collision test skipped only because no other user with email exists; logic is straightforward & exercised in code)", "frontend": "100% — Profile tab + all data-testids + password-mismatch + email-change all verified"},
+  "test_credentials": "Admin admin@taxi.local / admin123 (verified working post-test). Customer +79001234567 OTP 1234.",
+  "seed_data_creation": "None permanent. Temporary admin email changes were applied during tests and fully reverted (verified via admin login).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_admin_profile.py — 12 tests, 11 pass, 1 skip (collision needs an existing non-admin user with an email; OTP users only have phone so naturally skipped). Run: pytest /app/backend/tests/test_admin_profile.py -v. The tests are SELF-RESTORING — they always end with admin email/password back to admin@taxi.local/admin123 via explicit RESTORE calls. CSS verified: /app/frontend/src/index.css line 121-128 — .bottom-sheet.with-fabbar { bottom:0; padding-bottom:85px } and collapsed override bottom:56px; padding-bottom:1.5rem. Frontend Admin Profile tab confirmed working at /admin path after login: nav-profile sidebar item present, all 5 data-testids (profile-email-input, profile-password-input, profile-password-confirm, profile-current-password, profile-save-btn) rendered, current email shown read-only as admin@taxi.local, password mismatch shows 'Пароли не совпадают' in profile-msg, valid submit shows 'Данные обновлены. Используйте новые при следующем входе.' Important caveat: AdminPanel does not reload user after successful save — restoring email in the SAME session is blocked by FE guard 'Измените email или пароль' even though backend would accept it. Tester worked around via direct API call.",
+  "rca of the issue": "N/A — feature shipping verification, no bugs blocking. Single UX caveat noted as MEDIUM action item."
+}
