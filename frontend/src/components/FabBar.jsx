@@ -5,7 +5,7 @@ import { X } from 'lucide-react';
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 // Default icon if admin didn't provide one
-const DefaultIcon = ({ size = 22, color = 'currentColor' }) => (
+const DefaultIcon = ({ size = 18, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" />
     <line x1="12" y1="8" x2="12" y2="12" />
@@ -50,7 +50,7 @@ const FabBar = ({ role, onPrimaryClick, primaryLabel, primaryIconSvg }) => {
           data-testid="fab-btn-primary"
         >
           {primaryIconSvg ? renderIcon(primaryIconSvg) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 17h14M7 17l-2-7h14l-2 7M9 6h6l1 4H8z" />
               <circle cx="8" cy="17" r="2" />
               <circle cx="16" cy="17" r="2" />
