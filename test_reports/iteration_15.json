@@ -1,0 +1,25 @@
+{
+  "summary": "CSS fix to remove map strip below bottom-sheet verified end-to-end on customer & driver routes at mobile viewport 390x844. Expanded sheet now extends to bottom:0 with padding-bottom:60px so the fab-bar pill floats OVER the sheet's bottom padding area — NO map texture/grid/labels visible below the sheet anymore. Collapsed state preserves bottom:56px so the sheet handle is visible ABOVE the fab-bar with an 8px gap. Modal opens correctly on custom fab click. No layout regressions on inputs/buttons inside sheet.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/driver console", "issues": ["Pre-existing (not a regression): 'Location watch error: GeolocationPositionError' on /driver mount (geolocation denied in test env)."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_15.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "All acceptance criteria pass — CSS-only change is correct. The .bottom-sheet.with-fabbar rule (bottom:0; padding-bottom:60px) combined with .bottom-sheet.with-fabbar.collapsed (bottom:56px; padding-bottom:1.5rem) cleanly handles both expand and collapse states.",
+    "Minor: padding-bottom: 60px is slightly more than the fab-bar's effective footprint (8px bottom + 40px height = 48px). The extra 12px gives a visual breathing room which is desirable. No action needed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% — 8/8 acceptance criteria verified"},
+  "test_credentials": "Customer +79001234567 OTP 1234; Driver +79007654321 OTP 1234",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Measurements at 390x844: CUSTOMER expanded — sheet rect top=286 bottom=844 (computed bottom:0px, padding-bottom:60px), fab-bar top=796 bottom=836 → fab pill sits INSIDE the sheet's padding-bottom area; map strip gap = 0px. CUSTOMER collapsed — sheet has class 'bottom-sheet slide-up with-fabbar collapsed', computed bottom:56px padding-bottom:24px, sheet handle visible at y=740 (above fab-bar at y=796, 56px gap as designed). Re-expand restores bottom:0 / padding-bottom:60px / sheet-bottom=844 → no map strip. DRIVER expanded — same CSS values (bottom:0 padding-bottom:60px), sheet rect bottom=844, fab-bar top=796 → 0px map strip. Functional sheet content does NOT overlap fab-bar: customer 'Вызвать машину' btn bottom=724 vs fab top=796 (72px clearance); 'правилами платформы' link bottom=646 vs fab top=796. Custom fab button click → fab-modal overlay appears; fab-modal-close dismisses. Screenshots saved under .screenshots/ (customer_expanded.png, customer_collapsed.png, driver_expanded.png, driver_collapsed.png) and embedded in test output. Sheet handle selector '.sheet-handle' is clickable and toggles collapsed class correctly.",
+  "rca of the issue": "Previous CSS had .bottom-sheet.with-fabbar { bottom: 56px } leaving a 56px tall strip of map between the bottom of the sheet and the fab-bar/viewport edge. New CSS pulls the sheet down to bottom:0 (covering the entire bottom of the screen behind the fab-bar) and uses padding-bottom:60px to keep functional content inside the sheet above the fab-bar pill. Collapsed state explicitly resets to bottom:56px (with padding-bottom:1.5rem) so when the sheet shrinks to its handle, the handle does not sit BEHIND the fab-bar but appears 8px above it. Verified: gap from sheet bottom to viewport bottom = 0px expanded; in collapsed state the handle (y=740) is visually 56px above the fab-bar top (y=796)."
+}
