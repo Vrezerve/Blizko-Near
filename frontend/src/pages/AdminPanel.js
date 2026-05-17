@@ -1624,6 +1624,87 @@ const AdminPanel = () => {
           </div>
         </div>
 
+        {/* Notifications routing (push / sms / per-event) */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-1">Уведомления о заказах</h3>
+          <p className="text-sm text-slate-500 mb-4">Куда отправлять уведомления и какие события дублировать в SMS.</p>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-2">Канал по умолчанию</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { v: 'push', label: 'Только Push', hint: 'Бесплатно' },
+                { v: 'sms', label: 'Только SMS', hint: 'Платно' },
+                { v: 'both', label: 'Push + SMS', hint: 'Дублировать' },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setSettings({ ...settings, notification_channel: opt.v })}
+                  data-testid={`notif-channel-${opt.v}`}
+                  className={`p-3 rounded-lg border text-left transition ${
+                    (settings.notification_channel || 'push') === opt.v
+                      ? 'border-green-500 bg-green-50 text-green-700'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <p className="text-sm font-medium">{opt.label}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{opt.hint}</p>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 mt-2">
+              {(settings.notification_channel || 'push') === 'push' && 'Push дойдёт тем, кто разрешил уведомления. Тем кто не подписан — никаких уведомлений.'}
+              {settings.notification_channel === 'sms' && 'Все уведомления уйдут SMS на номер из профиля. Push отключен.'}
+              {settings.notification_channel === 'both' && 'Сначала push, дополнительно SMS. Подходит для критичных событий.'}
+            </p>
+          </div>
+
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-sm font-medium text-slate-700 mb-2">События для SMS</p>
+            <p className="text-xs text-slate-500 mb-3">
+              {(settings.notification_channel || 'push') === 'push'
+                ? 'Отметьте события, которые ДОЛЖНЫ доходить ВСЕГДА (SMS дублирует push на этих событиях).'
+                : 'Эти события точно уйдут SMS.'}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { key: 'order_created_driver', label: 'Водитель: новая заявка' },
+                { key: 'order_accepted_customer', label: 'Клиент: водитель найден' },
+                { key: 'order_completed_customer', label: 'Клиент: поездка завершена' },
+                { key: 'order_cancelled_driver', label: 'Водитель: клиент отменил' },
+                { key: 'order_cancelled_customer', label: 'Клиент: водитель отменил' },
+                { key: 'order_problem_customer', label: 'Клиент: проблема с заказом' },
+                { key: 'order_problem_driver', label: 'Водитель: проблема с заказом' },
+                { key: 'driver_activated', label: 'Водитель: аккаунт активирован' },
+              ].map(evt => {
+                const list = settings.sms_events || [];
+                const checked = list.includes(evt.key);
+                return (
+                  <label
+                    key={evt.key}
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm cursor-pointer transition ${
+                      checked ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      data-testid={`sms-evt-${evt.key}`}
+                      onChange={() => {
+                        const next = checked ? list.filter(k => k !== evt.key) : [...list, evt.key];
+                        setSettings({ ...settings, sms_events: next });
+                      }}
+                      className="rounded text-green-600"
+                    />
+                    <span className="text-slate-700">{evt.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         {/* Maintenance */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Режимы работы</h3>

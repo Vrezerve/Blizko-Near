@@ -221,6 +221,9 @@ class SettingsUpdate(BaseModel):
     map_bg_image_url: Optional[str] = None
     map_bg_size: Optional[str] = None
     map_bg_position: Optional[str] = None
+    # Notification channel routing
+    notification_channel: Optional[str] = None  # 'push' | 'sms' | 'both'
+    sms_events: Optional[List[str]] = None      # event keys to send via SMS
 
 class AdminLogin(BaseModel):
     email: str
@@ -355,24 +358,92 @@ async def system_log(level: str, source: str, message: str, details: dict = None
     }
     await db.system_logs.insert_one(entry)
 
-async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push"):
-    """Send push notification via OneSignal (if configured) or log to DB"""
+async def send_sms_ru(phone: str, message: str) -> tuple[bool, str]:
+    """Send SMS via SMS.ru. Returns (success, info)."""
+    settings = await db.settings.find_one({"id": "main"})
+    api_key = (settings or {}).get("sms_ru_api_key", "")
+    if not api_key or not phone:
+        return False, "no_api_key_or_phone"
+    try:
+        import requests as http_requests
+        # SMS.ru expects phone in international format without +
+        to = phone.lstrip("+").strip()
+        params = {"api_id": api_key, "to": to, "msg": message, "json": 1}
+        resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
+        data = resp.json() if resp.content else {}
+        if data.get("status") == "OK":
+            return True, str(data)
+        return False, str(data)
+    except Exception as e:
+        return False, str(e)
+
+
+async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push", event: Optional[str] = None):
+    """Send notification — routes via push (OneSignal) or SMS (SMS.ru) per settings.
+    
+    event: optional key (e.g. 'order_accepted', 'order_created'). When provided and the
+    setting `notification_channel` is 'sms' or `sms_events` contains this event,
+    the notification is sent over SMS instead of (or in addition to) push.
+    """
     notification = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "title": title,
         "message": message,
         "type": notification_type,
+        "event": event,
         "sent_at": datetime.now(timezone.utc).isoformat(),
         "status": "pending"
     }
     
-    # Try OneSignal push
     settings = await db.settings.find_one({"id": "main"})
-    onesignal_app_id = settings.get("onesignal_app_id", "") if settings else ""
-    onesignal_api_key = settings.get("onesignal_api_key", "") if settings else ""
+    onesignal_app_id = (settings or {}).get("onesignal_app_id", "")
+    onesignal_api_key = (settings or {}).get("onesignal_api_key", "")
+    channel_pref = (settings or {}).get("notification_channel", "push")
+    sms_events = set((settings or {}).get("sms_events") or [])
     
-    if onesignal_app_id and onesignal_api_key and notification_type == "push":
+    # Decide route
+    send_via_sms = False
+    send_via_push = False
+    if notification_type == "push":
+        if channel_pref == "sms":
+            send_via_sms = True
+        elif channel_pref == "both":
+            send_via_sms = True
+            send_via_push = True
+        elif channel_pref == "push":
+            # Per-event override: even in push mode, specific events can go via SMS
+            if event and event in sms_events:
+                send_via_sms = True
+            else:
+                send_via_push = True
+        else:
+            send_via_push = True
+    
+    # ===== SMS route =====
+    if send_via_sms:
+        try:
+            user = await db.users.find_one({"id": user_id}, {"_id": 0, "phone": 1})
+            phone = (user or {}).get("phone")
+            if not phone:
+                notification["status"] = "no_phone"
+                await system_log("info", "sms", f"SMS пропущен (нет номера): {title}", {"user_id": user_id[:8]})
+            else:
+                sms_text = f"{title}: {message}" if title and title not in message else message
+                ok, info = await send_sms_ru(phone, sms_text)
+                if ok:
+                    notification["status"] = "sent_sms"
+                    await system_log("info", "sms", f"SMS отправлен: {title}", {"user_id": user_id[:8], "phone": phone[-4:]})
+                else:
+                    notification["status"] = "sms_failed"
+                    notification["error"] = info[:300]
+                    await system_log("warning", "sms", f"SMS не отправлен: {info[:120]}", {"user_id": user_id[:8]})
+        except Exception as e:
+            notification["status"] = "sms_error"
+            await system_log("error", "sms", f"Ошибка SMS: {str(e)}", {"user_id": user_id[:8]})
+    
+    # ===== Push route =====
+    if send_via_push and onesignal_app_id and onesignal_api_key:
         try:
             import requests as http_requests
             is_v2_key = onesignal_api_key.startswith("os_v2_")
@@ -1046,7 +1117,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(get_current_user)
     # Send push to all online drivers
     online_drivers = await db.users.find({"role": "driver", "is_online": True, "is_busy": False}).to_list(100)
     for driver in online_drivers:
-        await send_notification(driver["id"], "Новая заявка", f"Адрес: {data.address}", "push")
+        await send_notification(driver["id"], "Новая заявка", f"Адрес: {data.address}", "push", event="order_created_driver")
     
     order.pop("_id", None)
     return order
@@ -1191,7 +1262,7 @@ async def accept_order(order_id: str, data: dict = None, user: dict = Depends(ge
         "type": "order_accepted",
         "order": {k: v for k, v in result.items() if k != "_id"}
     })
-    await send_notification(result["customer_id"], "Водитель найден", f"Водитель {user.get('name')} едет к вам", "push")
+    await send_notification(result["customer_id"], "Водитель найден", f"Водитель {user.get('name')} едет к вам", "push", event="order_accepted_customer")
     
     # Notify other drivers that order is taken
     await manager.broadcast_to_drivers({"type": "order_taken", "order_id": order_id}, user["id"])
@@ -1227,7 +1298,7 @@ async def complete_order(order_id: str, user: dict = Depends(get_current_user)):
     
     # Notify customer
     await manager.send_to_user(order["customer_id"], {"type": "order_completed", "order_id": order_id})
-    await send_notification(order["customer_id"], "Поездка завершена", "Спасибо что воспользовались сервисом!", "push")
+    await send_notification(order["customer_id"], "Поездка завершена", "Спасибо что воспользовались сервисом!", "push", event="order_completed_customer")
     
     return {"success": True}
 
@@ -1275,14 +1346,16 @@ async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
                 order["driver_id"],
                 "Заказ отменён",
                 "Пассажир отменил поездку",
-                "push"
+                "push",
+                event="order_cancelled_driver"
             )
         elif user["role"] == "driver":
             await send_notification(
                 order["customer_id"],
                 "Заказ отменён водителем",
                 "Водитель отменил поездку. Попробуйте вызвать другого.",
-                "push"
+                "push",
+                event="order_cancelled_customer"
             )
     except Exception:
         pass
@@ -1321,14 +1394,16 @@ async def report_problem(order_id: str, data: ProblemReport, user: dict = Depend
                 order["customer_id"],
                 "Проблема с заказом",
                 f"Водитель сообщил о проблеме: {data.reason}",
-                "push"
+                "push",
+                event="order_problem_customer"
             )
         elif reporter_type == "customer" and order.get("driver_id"):
             await send_notification(
                 order["driver_id"],
                 "Проблема с заказом",
                 f"Пассажир сообщил о проблеме: {data.reason}",
-                "push"
+                "push",
+                event="order_problem_driver"
             )
     except Exception:
         pass
@@ -1571,7 +1646,7 @@ async def activate_driver(user_id: str, user: dict = Depends(get_admin_user)):
     await log_action("driver_activated", user_id, {"activated_by": user["id"]})
     
     # Notify driver
-    await send_notification(user_id, "Аккаунт активирован", "Ваш аккаунт водителя активирован!", "push")
+    await send_notification(user_id, "Аккаунт активирован", "Ваш аккаунт водителя активирован!", "push", event="driver_activated")
     
     return {"success": True}
 
