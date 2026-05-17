@@ -1,34 +1,54 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-// Uses the deferred queue from the inline snippet in public/index.html.
-// Just synchronizes external_id with the authenticated user.
+// Synchronizes OneSignal external_id with the authenticated user.id.
+// Critical: login() must be called ONLY AFTER a push subscription exists,
+// otherwise OneSignal stores an alias with no subscription and the API
+// later returns "invalid_aliases".
 const OneSignalInit = () => {
   const { user } = useAuth();
-  const lastUserIdRef = useRef(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     window.OneSignalDeferred.push(async (OneSignal) => {
       try {
-        if (user?.id && user.id !== lastUserIdRef.current) {
-          if (typeof OneSignal.login === 'function') {
+        const tryLogin = async () => {
+          if (!user?.id) return;
+          // Has the browser actually subscribed?
+          const sub = OneSignal?.User?.PushSubscription;
+          const optedIn = typeof sub?.optedIn === 'boolean' ? sub.optedIn : false;
+          const hasId = !!sub?.id;
+          if (!optedIn && !hasId) return; // skip — no subscription yet
+          try {
             await OneSignal.login(user.id);
+            if (user.role && OneSignal.User?.addTag) {
+              try { await OneSignal.User.addTag('role', user.role); } catch (_) {}
+            }
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('OneSignal.login failed:', e?.message || e);
           }
-          if (user.role && OneSignal.User?.addTag) {
-            try { await OneSignal.User.addTag('role', user.role); } catch (_) {}
-          }
-          lastUserIdRef.current = user.id;
-        } else if (!user && lastUserIdRef.current) {
-          if (typeof OneSignal.logout === 'function') {
-            await OneSignal.logout();
-          }
-          lastUserIdRef.current = null;
+        };
+
+        const tryLogout = async () => {
+          try { await OneSignal.logout?.(); } catch (_) {}
+        };
+
+        if (user?.id) {
+          await tryLogin();
+          // React to subscription becoming active later (after user clicks "Allow")
+          try {
+            OneSignal.User?.PushSubscription?.addEventListener?.('change', (e) => {
+              if (e?.current?.optedIn || e?.current?.id) tryLogin();
+            });
+          } catch (_) {}
+        } else {
+          await tryLogout();
         }
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.warn('OneSignal user sync failed:', e?.message || e);
+        console.warn('OneSignal sync failed:', e?.message || e);
       }
     });
   }, [user]);

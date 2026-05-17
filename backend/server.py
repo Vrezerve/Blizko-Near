@@ -397,6 +397,10 @@ async def send_notification(user_id: str, title: str, message: str, notification
                 notification["status"] = "sent"
                 notification["onesignal_id"] = result["id"]
                 await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": result["id"]})
+            elif result.get("errors", {}).get("invalid_aliases") or result.get("invalid_aliases"):
+                # User has no active push subscription yet — not an error, just info
+                notification["status"] = "no_subscription"
+                await system_log("info", "push", f"Push пропущен (не подписан): {title}", {"user_id": user_id[:8]})
             else:
                 notification["status"] = "failed"
                 notification["error"] = str(result)

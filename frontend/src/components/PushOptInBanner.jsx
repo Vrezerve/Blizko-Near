@@ -1,56 +1,77 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Bell, X } from 'lucide-react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { Bell, X, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const STORAGE_KEY = 'push_banner_dismissed_at';
-const DISMISS_HOURS = 24; // re-show after a day
+const DISMISS_HOURS = 24;
+
+const getState = () => {
+  try {
+    const OS = window.OneSignal;
+    const perm = OS?.Notifications?.permission;
+    const sub = OS?.User?.PushSubscription;
+    const optedIn = !!(sub?.optedIn || sub?.id);
+    return { perm, optedIn };
+  } catch (_) {
+    return { perm: undefined, optedIn: false };
+  }
+};
 
 const PushOptInBanner = () => {
   const { user } = useAuth();
-  const [show, setShow] = useState(false);
+  const [state, setState] = useState({ perm: undefined, optedIn: false });
   const [busy, setBusy] = useState(false);
-  const checkedRef = useRef(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const listenerSetRef = useRef(false);
 
+  // Track whether the user dismissed recently
   useEffect(() => {
-    if (!user || checkedRef.current) return;
+    const t = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+    if (t && Date.now() - t < DISMISS_HOURS * 3600 * 1000) {
+      setDismissed(true);
+    }
+  }, []);
+
+  const refresh = useCallback(() => {
+    setState(getState());
+  }, []);
+
+  // Hook into OneSignal listeners once SDK is up
+  useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (!user) return;
 
-    const dismissedAt = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-    if (dismissedAt && Date.now() - dismissedAt < DISMISS_HOURS * 3600 * 1000) {
-      return; // recently dismissed
-    }
-
-    const check = (OneSignal) => {
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    window.OneSignalDeferred.push((OneSignal) => {
+      if (listenerSetRef.current) {
+        refresh();
+        return;
+      }
       try {
-        // OneSignal v16 API: Notifications.permission ('granted' | 'denied' | 'default')
-        const perm = OneSignal?.Notifications?.permission;
-        // Show banner only for users who haven't granted yet
-        if (perm !== 'granted' && perm !== 'denied') {
-          setShow(true);
-        } else if (perm === 'denied') {
-          // Browser blocked — show with different copy (instructions)
-          setShow(true);
-        }
-        checkedRef.current = true;
+        OneSignal.Notifications?.addEventListener?.('permissionChange', (granted) => {
+          refresh();
+          if (granted === true || granted === 'granted') {
+            setShowSuccess(true);
+            setTimeout(() => setShowSuccess(false), 3000);
+          }
+        });
+        OneSignal.User?.PushSubscription?.addEventListener?.('change', () => refresh());
+        listenerSetRef.current = true;
       } catch (_) {}
-    };
+      refresh();
+    });
 
-    // Try once now, and once after a small delay (SDK may still be loading)
-    if (window.OneSignal && window.OneSignal.Notifications) {
-      check(window.OneSignal);
-    } else {
-      const t1 = setTimeout(() => {
-        if (window.OneSignal) check(window.OneSignal);
-      }, 3000);
-      return () => clearTimeout(t1);
-    }
-  }, [user]);
+    // Fallback: poll briefly in case events don't fire in some browsers
+    const id = setInterval(refresh, 2000);
+    const stop = setTimeout(() => clearInterval(id), 30000);
+    return () => { clearInterval(id); clearTimeout(stop); };
+  }, [user, refresh]);
 
   const handleEnable = async () => {
     setBusy(true);
     try {
       const OS = window.OneSignal;
-      // Try slidedown prompt first, then native
       if (OS?.Slidedown?.promptPush) {
         await OS.Slidedown.promptPush({ force: true });
       } else if (OS?.Notifications?.requestPermission) {
@@ -58,23 +79,48 @@ const PushOptInBanner = () => {
       }
     } catch (_) {} finally {
       setBusy(false);
-      // After a brief moment, check state and hide if granted
-      setTimeout(() => {
-        if (window.OneSignal?.Notifications?.permission === 'granted') {
-          setShow(false);
-        }
-      }, 1500);
+      refresh();
     }
   };
 
   const handleDismiss = () => {
-    setShow(false);
+    setDismissed(true);
     localStorage.setItem(STORAGE_KEY, String(Date.now()));
   };
 
-  if (!user || !show) return null;
+  if (!user) return null;
 
-  const denied = window.OneSignal?.Notifications?.permission === 'denied';
+  const { perm, optedIn } = state;
+  const subscribed = optedIn || perm === 'granted';
+
+  // Success toast (briefly shown after granting)
+  if (showSuccess) {
+    return (
+      <div className="push-banner push-banner-success" data-testid="push-opt-in-banner">
+        <div className="push-banner-icon push-banner-icon-success"><Check className="w-5 h-5" /></div>
+        <div className="push-banner-text">
+          <p className="push-banner-title">Уведомления включены</p>
+          <p className="push-banner-sub">Будем сообщать о статусе заказов</p>
+        </div>
+        <button
+          type="button"
+          className="push-banner-close"
+          onClick={() => setShowSuccess(false)}
+          aria-label="Закрыть"
+          data-testid="push-opt-in-close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  // If subscribed, no banner
+  if (subscribed) return null;
+  // If user dismissed recently AND permission is not denied, hide
+  if (dismissed && perm !== 'denied') return null;
+
+  const denied = perm === 'denied';
 
   return (
     <div className="push-banner" data-testid="push-opt-in-banner">
@@ -85,7 +131,7 @@ const PushOptInBanner = () => {
         </p>
         <p className="push-banner-sub">
           {denied
-            ? 'Разрешите уведомления в настройках браузера → сайт ryadom22.ru'
+            ? 'Разрешите уведомления в настройках браузера для ryadom22.ru'
             : 'Когда водитель примет заказ — вы сразу узнаете'}
         </p>
       </div>
