@@ -358,17 +358,33 @@ async def system_log(level: str, source: str, message: str, details: dict = None
     }
     await db.system_logs.insert_one(entry)
 
-async def send_sms_ru(phone: str, message: str) -> tuple[bool, str]:
-    """Send SMS via SMS.ru. Returns (success, info)."""
+def get_client_ip(request: Optional[Request]) -> Optional[str]:
+    """Extract client IP from Request, honouring proxy headers."""
+    if not request:
+        return None
+    try:
+        fwd = request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or ""
+        if fwd:
+            return fwd.split(",")[0].strip()
+        return request.client.host if request.client else None
+    except Exception:
+        return None
+
+async def send_sms_ru(phone: str, message: str, ip: Optional[str] = None) -> tuple[bool, str]:
+    """Send SMS via SMS.ru. Returns (success, info).
+    
+    ip: Optional client IP address — recommended by SMS.ru for anti-fraud protection.
+    """
     settings = await db.settings.find_one({"id": "main"})
     api_key = (settings or {}).get("sms_ru_api_key", "")
     if not api_key or not phone:
         return False, "no_api_key_or_phone"
     try:
         import requests as http_requests
-        # SMS.ru expects phone in international format without +
         to = phone.lstrip("+").strip()
         params = {"api_id": api_key, "to": to, "msg": message, "json": 1}
+        if ip:
+            params["ip"] = ip
         resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
         data = resp.json() if resp.content else {}
         if data.get("status") == "OK":
@@ -378,7 +394,7 @@ async def send_sms_ru(phone: str, message: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push", event: Optional[str] = None):
+async def send_notification(user_id: str, title: str, message: str, notification_type: str = "push", event: Optional[str] = None, ip: Optional[str] = None):
     """Send notification — routes via push (OneSignal) or SMS (SMS.ru) per settings.
     
     event: optional key (e.g. 'order_accepted', 'order_created'). When provided and the
@@ -430,7 +446,7 @@ async def send_notification(user_id: str, title: str, message: str, notification
                 await system_log("info", "sms", f"SMS пропущен (нет номера): {title}", {"user_id": user_id[:8]})
             else:
                 sms_text = f"{title}: {message}" if title and title not in message else message
-                ok, info = await send_sms_ru(phone, sms_text)
+                ok, info = await send_sms_ru(phone, sms_text, ip=ip)
                 if ok:
                     notification["status"] = "sent_sms"
                     await system_log("info", "sms", f"SMS отправлен: {title}", {"user_id": user_id[:8], "phone": phone[-4:]})
@@ -628,7 +644,8 @@ async def get_device_registration_count(device_id: str) -> int:
 # ============ AUTH ROUTES ============
 
 @auth_router.post("/send-code")
-async def send_verification_code(data: dict):
+async def send_verification_code(data: dict, request: Request):
+    client_ip = (request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or (request.client.host if request.client else "")).split(",")[0].strip()
     phone = data.get("phone")
     role = data.get("role")
     device_id = data.get("device_id")
@@ -674,6 +691,8 @@ async def send_verification_code(data: dict):
                 "msg": f"Код подтверждения: {code}",
                 "json": 1
             }
+            if client_ip:
+                params["ip"] = client_ip
             resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
             result = resp.json()
             if result.get("status") == "OK":
@@ -853,8 +872,9 @@ async def login_with_pin(data: LoginPin):
     return {"token": token, "user": user}
 
 @auth_router.post("/reset-pin-request")
-async def reset_pin_request(data: ResetPinRequest):
+async def reset_pin_request(data: ResetPinRequest, request: Request):
     """Send OTP code for PIN reset"""
+    client_ip = (request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip") or (request.client.host if request.client else "")).split(",")[0].strip()
     blocked = await check_device_blocked(data.device_id)
     if blocked:
         raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
@@ -885,6 +905,8 @@ async def reset_pin_request(data: ResetPinRequest):
             import requests as http_requests
             clean_phone = data.phone.replace("+", "").replace(" ", "").replace("-", "")
             params = {"api_id": sms_api_key, "to": clean_phone, "msg": f"Код сброса PIN: {code}", "json": 1}
+            if client_ip:
+                params["ip"] = client_ip
             resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
             if resp.json().get("status") == "OK":
                 sms_sent = True
@@ -1065,7 +1087,8 @@ async def update_location(data: LocationUpdate, user: dict = Depends(get_current
 # ============ ORDERS ROUTES ============
 
 @orders_router.post("/create")
-async def create_order(data: OrderCreate, user: dict = Depends(get_current_user)):
+async def create_order(data: OrderCreate, request: Request, user: dict = Depends(get_current_user)):
+    client_ip = get_client_ip(request)
     if user["role"] != "customer":
         raise HTTPException(status_code=403, detail="Only customers can create orders")
     
@@ -1117,7 +1140,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(get_current_user)
     # Send push to all online drivers
     online_drivers = await db.users.find({"role": "driver", "is_online": True, "is_busy": False}).to_list(100)
     for driver in online_drivers:
-        await send_notification(driver["id"], "Новая заявка", f"Адрес: {data.address}", "push", event="order_created_driver")
+        await send_notification(driver["id"], "Новая заявка", f"Адрес: {data.address}", "push", event="order_created_driver", ip=client_ip)
     
     order.pop("_id", None)
     return order
@@ -1204,7 +1227,8 @@ async def get_active_orders(user: dict = Depends(get_current_user)):
     return None
 
 @orders_router.post("/accept/{order_id}")
-async def accept_order(order_id: str, data: dict = None, user: dict = Depends(get_current_user)):
+async def accept_order(order_id: str, request: Request, data: dict = None, user: dict = Depends(get_current_user)):
+    client_ip = get_client_ip(request)
     if user["role"] != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can accept orders")
     
@@ -1262,7 +1286,7 @@ async def accept_order(order_id: str, data: dict = None, user: dict = Depends(ge
         "type": "order_accepted",
         "order": {k: v for k, v in result.items() if k != "_id"}
     })
-    await send_notification(result["customer_id"], "Водитель найден", f"Водитель {user.get('name')} едет к вам", "push", event="order_accepted_customer")
+    await send_notification(result["customer_id"], "Водитель найден", f"Водитель {user.get('name')} едет к вам", "push", event="order_accepted_customer", ip=client_ip)
     
     # Notify other drivers that order is taken
     await manager.broadcast_to_drivers({"type": "order_taken", "order_id": order_id}, user["id"])
@@ -1271,7 +1295,8 @@ async def accept_order(order_id: str, data: dict = None, user: dict = Depends(ge
     return result
 
 @orders_router.post("/complete/{order_id}")
-async def complete_order(order_id: str, user: dict = Depends(get_current_user)):
+async def complete_order(order_id: str, request: Request, user: dict = Depends(get_current_user)):
+    client_ip = get_client_ip(request)
     if user["role"] != "driver":
         raise HTTPException(status_code=403, detail="Only drivers can complete orders")
     
@@ -1298,12 +1323,13 @@ async def complete_order(order_id: str, user: dict = Depends(get_current_user)):
     
     # Notify customer
     await manager.send_to_user(order["customer_id"], {"type": "order_completed", "order_id": order_id})
-    await send_notification(order["customer_id"], "Поездка завершена", "Спасибо что воспользовались сервисом!", "push", event="order_completed_customer")
+    await send_notification(order["customer_id"], "Поездка завершена", "Спасибо что воспользовались сервисом!", "push", event="order_completed_customer", ip=client_ip)
     
     return {"success": True}
 
 @orders_router.post("/cancel/{order_id}")
-async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
+async def cancel_order(order_id: str, request: Request, user: dict = Depends(get_current_user)):
+    client_ip = get_client_ip(request)
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1347,7 +1373,8 @@ async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
                 "Заказ отменён",
                 "Пассажир отменил поездку",
                 "push",
-                event="order_cancelled_driver"
+                event="order_cancelled_driver",
+                ip=client_ip
             )
         elif user["role"] == "driver":
             await send_notification(
@@ -1355,7 +1382,8 @@ async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
                 "Заказ отменён водителем",
                 "Водитель отменил поездку. Попробуйте вызвать другого.",
                 "push",
-                event="order_cancelled_customer"
+                event="order_cancelled_customer",
+                ip=client_ip
             )
     except Exception:
         pass
@@ -1363,7 +1391,8 @@ async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
     return {"success": True}
 
 @orders_router.post("/problem/{order_id}")
-async def report_problem(order_id: str, data: ProblemReport, user: dict = Depends(get_current_user)):
+async def report_problem(order_id: str, data: ProblemReport, request: Request, user: dict = Depends(get_current_user)):
+    client_ip = get_client_ip(request)
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1395,7 +1424,8 @@ async def report_problem(order_id: str, data: ProblemReport, user: dict = Depend
                 "Проблема с заказом",
                 f"Водитель сообщил о проблеме: {data.reason}",
                 "push",
-                event="order_problem_customer"
+                event="order_problem_customer",
+                ip=client_ip
             )
         elif reporter_type == "customer" and order.get("driver_id"):
             await send_notification(
@@ -1403,7 +1433,8 @@ async def report_problem(order_id: str, data: ProblemReport, user: dict = Depend
                 "Проблема с заказом",
                 f"Пассажир сообщил о проблеме: {data.reason}",
                 "push",
-                event="order_problem_driver"
+                event="order_problem_driver",
+                ip=client_ip
             )
     except Exception:
         pass
