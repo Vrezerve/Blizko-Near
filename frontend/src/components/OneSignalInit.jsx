@@ -22,6 +22,8 @@ const OneSignalInit = () => {
           if (!optedIn && !hasId) return; // skip — no subscription yet
           try {
             await OneSignal.login(user.id);
+            // Tag with user_id as fallback for Android WebView wrappers
+            try { await OneSignal.User?.addTag?.('user_id', user.id); } catch (_) {}
             if (user.role && OneSignal.User?.addTag) {
               try { await OneSignal.User.addTag('role', user.role); } catch (_) {}
             }

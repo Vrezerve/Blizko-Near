@@ -375,7 +375,6 @@ async def send_notification(user_id: str, title: str, message: str, notification
     if onesignal_app_id and onesignal_api_key and notification_type == "push":
         try:
             import requests as http_requests
-            # Detect key format: os_v2_app_* uses new API endpoint with "Key" scheme
             is_v2_key = onesignal_api_key.startswith("os_v2_")
             base_url = "https://api.onesignal.com" if is_v2_key else "https://onesignal.com/api/v1"
             auth_header = f"Key {onesignal_api_key}" if is_v2_key else f"Basic {onesignal_api_key}"
@@ -388,23 +387,44 @@ async def send_notification(user_id: str, title: str, message: str, notification
                 "target_channel": "push",
                 "headings": {"en": title, "ru": title},
                 "contents": {"en": message, "ru": message},
-                # Target by external_id (set on frontend after auth) — supports Web + native
-                "include_aliases": {"external_id": [user_id]}
+                # Target by external_id (web SDK) AND by tag user_id (mobile WebView wrapper) — whichever the device has
+                "include_aliases": {"external_id": [user_id]},
+                "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}],
+                "channel_for_external_user_ids": "push",
             }
-            resp = http_requests.post(f"{base_url}/notifications", json=payload, headers=headers, timeout=10)
-            result = resp.json() if resp.content else {}
-            if result.get("id"):
+            # OneSignal can't have both include_aliases AND filters in one request — split: try alias first, then tag as fallback
+            attempts = [
+                {**payload, "filters": None},
+                {**{k: v for k, v in payload.items() if k != "include_aliases"}, "filters": payload["filters"]},
+            ]
+            sent_id = None
+            last_error = None
+            for body in attempts:
+                body = {k: v for k, v in body.items() if v is not None}
+                try:
+                    resp = http_requests.post(f"{base_url}/notifications", json=body, headers=headers, timeout=10)
+                    result = resp.json() if resp.content else {}
+                except Exception as e:
+                    last_error = str(e)
+                    continue
+                if result.get("id"):
+                    sent_id = result["id"]
+                    break
+                last_error = result
+            if sent_id:
                 notification["status"] = "sent"
-                notification["onesignal_id"] = result["id"]
-                await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": result["id"]})
-            elif result.get("errors", {}).get("invalid_aliases") or result.get("invalid_aliases"):
-                # User has no active push subscription yet — not an error, just info
-                notification["status"] = "no_subscription"
-                await system_log("info", "push", f"Push пропущен (не подписан): {title}", {"user_id": user_id[:8]})
+                notification["onesignal_id"] = sent_id
+                await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": sent_id})
             else:
-                notification["status"] = "failed"
-                notification["error"] = str(result)
-                await system_log("warning", "push", f"Push не отправлен: {result.get('errors', result)}", {"user_id": user_id[:8], "http_status": resp.status_code})
+                # All attempts failed — log as info if it's just no-subscription, warn otherwise
+                err_str = str(last_error).lower()
+                if "not subscribed" in err_str or "invalid_aliases" in err_str or "no subscribers" in err_str:
+                    notification["status"] = "no_subscription"
+                    await system_log("info", "push", f"Push пропущен (не подписан): {title}", {"user_id": user_id[:8]})
+                else:
+                    notification["status"] = "failed"
+                    notification["error"] = str(last_error)[:300]
+                    await system_log("warning", "push", f"Push не отправлен: {last_error}", {"user_id": user_id[:8]})
         except Exception as e:
             notification["status"] = "error"
             await system_log("error", "push", f"Ошибка OneSignal: {str(e)}", {"user_id": user_id[:8]})
@@ -1893,6 +1913,23 @@ async def test_smtp(user: dict = Depends(get_admin_user)):
         return {"success": True, "message": f"Тестовое письмо отправлено на {admin_email}"}
     else:
         raise HTTPException(status_code=500, detail="Не удалось отправить. Проверьте SMTP-настройки в логах.")
+
+@api_router.post("/notifications/test-self")
+async def notify_test_self(user: dict = Depends(get_current_user)):
+    """Send a test push to the current user (any role). Helps verify subscription."""
+    await send_notification(
+        user["id"],
+        "Тест уведомлений",
+        "Если вы видите это сообщение — push настроен правильно.",
+        "push"
+    )
+    # Find the most recent notification record for this user
+    last = await db.notifications.find_one(
+        {"user_id": user["id"]},
+        {"_id": 0, "status": 1, "error": 1, "onesignal_id": 1},
+        sort=[("sent_at", -1)]
+    )
+    return {"success": True, "delivery": last}
 
 @admin_router.post("/test-push")
 async def test_push(user: dict = Depends(get_admin_user)):
