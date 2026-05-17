@@ -1203,6 +1203,7 @@ async def complete_order(order_id: str, user: dict = Depends(get_current_user)):
     
     # Notify customer
     await manager.send_to_user(order["customer_id"], {"type": "order_completed", "order_id": order_id})
+    await send_notification(order["customer_id"], "Поездка завершена", "Спасибо что воспользовались сервисом!", "push")
     
     return {"success": True}
 
@@ -1243,6 +1244,25 @@ async def cancel_order(order_id: str, user: dict = Depends(get_current_user)):
     
     await log_action("order_cancelled", user["id"], {"order_id": order_id, "cancelled_by": cancelled_by})
     
+    # Notify the OTHER party via push
+    try:
+        if user["role"] == "customer" and order.get("driver_id"):
+            await send_notification(
+                order["driver_id"],
+                "Заказ отменён",
+                "Пассажир отменил поездку",
+                "push"
+            )
+        elif user["role"] == "driver":
+            await send_notification(
+                order["customer_id"],
+                "Заказ отменён водителем",
+                "Водитель отменил поездку. Попробуйте вызвать другого.",
+                "push"
+            )
+    except Exception:
+        pass
+    
     return {"success": True}
 
 @orders_router.post("/problem/{order_id}")
@@ -1269,6 +1289,25 @@ async def report_problem(order_id: str, data: ProblemReport, user: dict = Depend
         await db.users.update_one({"id": order["driver_id"]}, {"$set": {"is_busy": False}, "$inc": {"balance": 1, "problem_orders": 1}})
     
     await log_action("order_problem", user["id"], {"order_id": order_id, "reason": data.reason, "reporter": reporter_type})
+    
+    # Notify the OTHER party via push
+    try:
+        if reporter_type == "driver" and order.get("customer_id"):
+            await send_notification(
+                order["customer_id"],
+                "Проблема с заказом",
+                f"Водитель сообщил о проблеме: {data.reason}",
+                "push"
+            )
+        elif reporter_type == "customer" and order.get("driver_id"):
+            await send_notification(
+                order["driver_id"],
+                "Проблема с заказом",
+                f"Пассажир сообщил о проблеме: {data.reason}",
+                "push"
+            )
+    except Exception:
+        pass
     
     # Send email notification to admin
     settings = await db.settings.find_one({"id": "main"})

@@ -10,6 +10,24 @@
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap&subset=cyrillic" rel="stylesheet" />
         <title>Такси Рядом</title>
         <style>* { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }</style>
+        <!-- OneSignal Web Push -->
+        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+        <script>
+          window.OneSignalDeferred = window.OneSignalDeferred || [];
+          window.OneSignalDeferred.push(async function (OneSignal) {
+            try {
+              const res = await fetch('/api/settings/public', { cache: 'no-store' });
+              const s = await res.json();
+              if (s && s.onesignal_app_id && /^[a-f0-9-]{36}$/i.test(s.onesignal_app_id)) {
+                await OneSignal.init({
+                  appId: s.onesignal_app_id,
+                  allowLocalhostAsSecureOrigin: true,
+                  serviceWorkerPath: '/OneSignalSDKWorker.js',
+                });
+              }
+            } catch (e) { /* ignore */ }
+          });
+        </script>
     </head>
     <body>
         <noscript>Для работы приложения включите JavaScript.</noscript>
