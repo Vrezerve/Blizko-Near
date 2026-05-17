@@ -271,6 +271,63 @@ h1, h2, h3, h4, h5, h6 {
   .fab-bar { bottom: 24px; }
 }
 
+/* ============ PUSH OPT-IN BANNER ============ */
+.push-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 24px);
+  max-width: 480px;
+  background: #0f172a;
+  color: white;
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+  animation: fab-pop-in 0.25s ease-out;
+}
+.push-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  flex-shrink: 0;
+}
+.push-banner-text { flex: 1; min-width: 0; }
+.push-banner-title { font-size: 13px; font-weight: 600; line-height: 1.2; margin: 0; }
+.push-banner-sub { font-size: 11px; color: #cbd5e1; line-height: 1.3; margin: 2px 0 0; }
+.push-banner-btn {
+  background: #16a34a;
+  color: white;
+  border: none;
+  padding: 7px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.push-banner-btn:hover { background: #15803d; }
+.push-banner-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.push-banner-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.push-banner-close:hover { background: rgba(255, 255, 255, 0.08); color: white; }
+
 .btn-primary {
   width: 100%;
   background-color: #16a34a;

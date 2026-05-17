@@ -15,6 +15,7 @@ import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
 import ErrorBoundary from './components/ErrorBoundary';
 import OneSignalInit from './components/OneSignalInit';
+import PushOptInBanner from './components/PushOptInBanner';
 
 import './App.css';
 
@@ -112,6 +113,7 @@ function App() {
       <BrowserRouter>
         <MapStyleLoader />
         <OneSignalInit />
+        <PushOptInBanner />
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>

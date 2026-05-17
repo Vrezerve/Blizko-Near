@@ -23,6 +23,23 @@
                   appId: s.onesignal_app_id,
                   allowLocalhostAsSecureOrigin: true,
                   serviceWorkerPath: '/OneSignalSDKWorker.js',
+                  // Auto-prompt all visitors via slide-down message
+                  promptOptions: {
+                    slidedown: {
+                      prompts: [
+                        {
+                          type: "push",
+                          autoPrompt: true,
+                          text: {
+                            actionMessage: "Получайте уведомления о статусе заказов: водитель найден, едет к вам, поездка завершена.",
+                            acceptButton: "Включить",
+                            cancelButton: "Не сейчас"
+                          },
+                          delay: { pageViews: 1, timeDelay: 5 }
+                        }
+                      ]
+                    }
+                  }
                 });
               }
             } catch (e) { /* ignore */ }
