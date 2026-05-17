@@ -375,25 +375,32 @@ async def send_notification(user_id: str, title: str, message: str, notification
     if onesignal_app_id and onesignal_api_key and notification_type == "push":
         try:
             import requests as http_requests
+            # Detect key format: os_v2_app_* uses new API endpoint with "Key" scheme
+            is_v2_key = onesignal_api_key.startswith("os_v2_")
+            base_url = "https://api.onesignal.com" if is_v2_key else "https://onesignal.com/api/v1"
+            auth_header = f"Key {onesignal_api_key}" if is_v2_key else f"Basic {onesignal_api_key}"
             headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Basic {onesignal_api_key}"
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": auth_header
             }
             payload = {
                 "app_id": onesignal_app_id,
+                "target_channel": "push",
                 "headings": {"en": title, "ru": title},
                 "contents": {"en": message, "ru": message},
-                "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}]
+                # Target by external_id (set on frontend after auth) — supports Web + native
+                "include_aliases": {"external_id": [user_id]}
             }
-            resp = http_requests.post("https://onesignal.com/api/v1/notifications", json=payload, headers=headers, timeout=10)
-            result = resp.json()
+            resp = http_requests.post(f"{base_url}/notifications", json=payload, headers=headers, timeout=10)
+            result = resp.json() if resp.content else {}
             if result.get("id"):
                 notification["status"] = "sent"
                 notification["onesignal_id"] = result["id"]
                 await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": result["id"]})
             else:
                 notification["status"] = "failed"
-                await system_log("warning", "push", f"Push не отправлен: {result.get('errors', '')}", {"user_id": user_id[:8]})
+                notification["error"] = str(result)
+                await system_log("warning", "push", f"Push не отправлен: {result.get('errors', result)}", {"user_id": user_id[:8], "http_status": resp.status_code})
         except Exception as e:
             notification["status"] = "error"
             await system_log("error", "push", f"Ошибка OneSignal: {str(e)}", {"user_id": user_id[:8]})
@@ -1907,6 +1914,7 @@ async def get_public_settings():
         "google_map_api_key": settings.get("google_map_api_key", ""),
         "active_map_provider": settings.get("active_map_provider", "yandex"),
         "custom_pin_url": settings.get("custom_pin_url", ""),
+        "onesignal_app_id": settings.get("onesignal_app_id", ""),
         "eta_options": settings.get("eta_options", "1,2,3,5"),
         "map_bg_color": settings.get("map_bg_color", ""),
         "map_grid_color": settings.get("map_grid_color", ""),

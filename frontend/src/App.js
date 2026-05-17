@@ -14,6 +14,7 @@ import AdminPanel from './pages/AdminPanel';
 import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
 import ErrorBoundary from './components/ErrorBoundary';
+import OneSignalInit from './components/OneSignalInit';
 
 import './App.css';
 
@@ -110,6 +111,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <MapStyleLoader />
+        <OneSignalInit />
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>
