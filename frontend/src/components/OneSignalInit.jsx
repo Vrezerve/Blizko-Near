@@ -15,20 +15,17 @@ const OneSignalInit = () => {
       try {
         const tryLogin = async () => {
           if (!user?.id) return;
-          // Has the browser actually subscribed?
           const sub = OneSignal?.User?.PushSubscription;
-          const optedIn = typeof sub?.optedIn === 'boolean' ? sub.optedIn : false;
-          const hasId = !!sub?.id;
-          if (!optedIn && !hasId) return; // skip — no subscription yet
+          const optedIn = !!(sub?.optedIn || sub?.id);
+          const granted = OneSignal?.Notifications?.permission === true || OneSignal?.Notifications?.permissionNative === 'granted';
+          if (!optedIn && !granted) return; // skip — no subscription yet
           try {
             await OneSignal.login(user.id);
-            // Tag with user_id as fallback for Android WebView wrappers
             try { await OneSignal.User?.addTag?.('user_id', user.id); } catch (_) {}
             if (user.role && OneSignal.User?.addTag) {
               try { await OneSignal.User.addTag('role', user.role); } catch (_) {}
             }
           } catch (e) {
-            // eslint-disable-next-line no-console
             console.warn('OneSignal.login failed:', e?.message || e);
           }
         };
