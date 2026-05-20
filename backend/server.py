@@ -486,14 +486,22 @@ async def send_notification(user_id: str, title: str, message: str, notification
             ]
             sent_id = None
             last_error = None
-            for body in attempts:
+            attempt_logs = []  # full per-attempt diagnostic
+            for idx, body in enumerate(attempts):
                 body = {k: v for k, v in body.items() if v is not None}
+                method = "alias_external_id" if idx == 0 else "tag_user_id"
+                attempt_info = {"method": method, "request": body}
                 try:
                     resp = http_requests.post(f"{base_url}/notifications", json=body, headers=headers, timeout=10)
                     result = resp.json() if resp.content else {}
+                    attempt_info["http_status"] = resp.status_code
+                    attempt_info["response"] = result
                 except Exception as e:
                     last_error = str(e)
+                    attempt_info["exception"] = str(e)
+                    attempt_logs.append(attempt_info)
                     continue
+                attempt_logs.append(attempt_info)
                 if result.get("id"):
                     sent_id = result["id"]
                     break
@@ -501,20 +509,36 @@ async def send_notification(user_id: str, title: str, message: str, notification
             if sent_id:
                 notification["status"] = "sent"
                 notification["onesignal_id"] = sent_id
-                await system_log("info", "push", f"Push отправлен: {title}", {"user_id": user_id[:8], "onesignal_id": sent_id})
+                await system_log("info", "push", f"Push отправлен: {title}", {
+                    "user_id": user_id,
+                    "onesignal_id": sent_id,
+                    "title": title,
+                    "channel": "push",
+                    "attempts": attempt_logs,
+                })
             else:
-                # All attempts failed — log as info if it's just no-subscription, warn otherwise
                 err_str = str(last_error).lower()
                 if "not subscribed" in err_str or "invalid_aliases" in err_str or "no subscribers" in err_str:
                     notification["status"] = "no_subscription"
-                    await system_log("info", "push", f"Push пропущен (не подписан): {title}", {"user_id": user_id[:8]})
+                    await system_log("info", "push", f"Push пропущен (не подписан): {title}", {
+                        "user_id": user_id,
+                        "title": title,
+                        "channel": "push",
+                        "reason": "no_active_subscription",
+                        "attempts": attempt_logs,
+                    })
                 else:
                     notification["status"] = "failed"
-                    notification["error"] = str(last_error)[:300]
-                    await system_log("warning", "push", f"Push не отправлен: {last_error}", {"user_id": user_id[:8]})
+                    notification["error"] = str(last_error)[:500]
+                    await system_log("warning", "push", f"Push не отправлен: {last_error}", {
+                        "user_id": user_id,
+                        "title": title,
+                        "channel": "push",
+                        "attempts": attempt_logs,
+                    })
         except Exception as e:
             notification["status"] = "error"
-            await system_log("error", "push", f"Ошибка OneSignal: {str(e)}", {"user_id": user_id[:8]})
+            await system_log("error", "push", f"Ошибка OneSignal: {str(e)}", {"user_id": user_id, "exception_type": type(e).__name__})
     
     await db.notifications.insert_one(notification)
     await log_action("notification_sent", user_id, {"title": title, "type": notification_type})
@@ -2036,6 +2060,49 @@ async def notify_test_self(user: dict = Depends(get_current_user)):
         sort=[("sent_at", -1)]
     )
     return {"success": True, "delivery": last}
+
+@admin_router.get("/push-diagnostics/{user_id}")
+async def push_diagnostics(user_id: str, user: dict = Depends(get_admin_user)):
+    """Full diagnostic info about a user's OneSignal subscription status."""
+    settings = await db.settings.find_one({"id": "main"})
+    app_id = (settings or {}).get("onesignal_app_id", "")
+    api_key = (settings or {}).get("onesignal_api_key", "")
+    if not app_id or not api_key:
+        raise HTTPException(status_code=400, detail="OneSignal не настроен")
+    
+    # 1. Find user in our DB
+    db_user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0, "pin_hash": 0})
+    
+    import requests as http_requests
+    is_v2 = api_key.startswith("os_v2_")
+    headers = {"Authorization": (f"Key {api_key}" if is_v2 else f"Basic {api_key}")}
+    
+    diag = {
+        "user_in_db": db_user,
+        "onesignal_user": None,
+        "onesignal_subscriptions": [],
+        "last_5_notifications": [],
+    }
+    
+    # 2. Query OneSignal by external_id
+    try:
+        url = f"https://api.onesignal.com/apps/{app_id}/users/by/external_id/{user_id}"
+        r = http_requests.get(url, headers=headers, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            diag["onesignal_user"] = data
+            diag["onesignal_subscriptions"] = data.get("subscriptions", [])
+        else:
+            diag["onesignal_user"] = {"http_status": r.status_code, "body": r.text[:500]}
+    except Exception as e:
+        diag["onesignal_user_error"] = str(e)
+    
+    # 3. Last 5 notifications for this user
+    notifs = await db.notifications.find({"user_id": user_id}, {"_id": 0}).sort("sent_at", -1).limit(5).to_list(5)
+    diag["last_5_notifications"] = notifs
+    
+    return diag
+
 
 @admin_router.post("/test-push")
 async def test_push(user: dict = Depends(get_admin_user)):

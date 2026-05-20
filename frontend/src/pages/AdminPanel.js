@@ -1620,6 +1620,39 @@ const AdminPanel = () => {
               >
                 Тест Push
               </button>
+              <button
+                data-testid="push-diag-btn"
+                onClick={async () => {
+                  const uid = prompt('Введите user ID или External ID для диагностики:');
+                  if (!uid) return;
+                  try {
+                    const res = await api('GET', `/admin/push-diagnostics/${encodeURIComponent(uid.trim())}`);
+                    const w = window.open('', '_blank', 'width=900,height=700');
+                    if (w) {
+                      const sub = (res.onesignal_subscriptions || [])[0] || {};
+                      let summary = '';
+                      if (sub.enabled === false && sub.notification_types === -2) {
+                        summary = '<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px"><b>⚠ Пользователь ЗАБЛОКИРОВАЛ уведомления в браузере.</b><br/>Когда появился запрос разрешения — он нажал «Block». Push доставлять некуда.<br/>Чтобы исправить: открыть замок в адресной строке → разрешения → уведомления → Allow.</div>';
+                      } else if (sub.enabled === false) {
+                        summary = '<div style="background:#fef3c7;border:1px solid #fde68a;color:#854d0e;padding:12px;border-radius:8px;margin-bottom:12px"><b>Подписка существует, но disabled.</b><br/>Скорее всего токен устарел или service worker не активен.</div>';
+                      } else if (!sub.token) {
+                        summary = '<div style="background:#fef3c7;border:1px solid #fde68a;color:#854d0e;padding:12px;border-radius:8px;margin-bottom:12px"><b>Нет push-токена.</b> Подписка ещё не завершилась.</div>';
+                      } else if (sub.enabled === true) {
+                        summary = '<div style="background:#dcfce7;border:1px solid #86efac;color:#166534;padding:12px;border-radius:8px;margin-bottom:12px"><b>✓ Подписка активна. Push должен доходить.</b></div>';
+                      } else {
+                        summary = '<div style="background:#e0e7ff;border:1px solid #c7d2fe;color:#3730a3;padding:12px;border-radius:8px;margin-bottom:12px">Подписка OneSignal не найдена для этого user_id.</div>';
+                      }
+                      w.document.write(`<html><head><title>Push Diagnostics</title><style>body{font-family:Inter,sans-serif;padding:24px;max-width:900px;margin:0 auto}pre{background:#f8fafc;border:1px solid #e2e8f0;padding:12px;border-radius:8px;overflow:auto;font-size:12px}</style></head><body><h2>Push Diagnostics</h2><p style="color:#475569">User: <code>${uid}</code></p>${summary}<h3>Full response</h3><pre>${JSON.stringify(res, null, 2).replace(/</g,'&lt;')}</pre></body></html>`);
+                      w.document.close();
+                    }
+                  } catch (e) {
+                    alert(e.response?.data?.detail || e.message || 'Ошибка диагностики');
+                  }
+                }}
+                className="px-4 py-2 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100"
+              >
+                Диагностика
+              </button>
             </div>
           </div>
         </div>
