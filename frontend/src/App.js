@@ -13,6 +13,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminPanel from './pages/AdminPanel';
 import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
+import PushDebug from './pages/PushDebug';
 import ErrorBoundary from './components/ErrorBoundary';
 import OneSignalInit from './components/OneSignalInit';
 import PushOptInBanner from './components/PushOptInBanner';
@@ -74,6 +75,7 @@ function AppRoutes() {
       <Route path="/auth/pin" element={<PinScreen />} />
       <Route path="/auth/pin-setup" element={<PinSetup />} />
       <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/push-debug" element={<PushDebug />} />
       
       <Route
         path="/customer"
