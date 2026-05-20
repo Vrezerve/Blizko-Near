@@ -264,6 +264,7 @@ const AdminPanel = () => {
   const [credForm, setCredForm] = useState({ current_password: '', new_email: '', new_password: '', confirm_password: '' });
   const [credSaving, setCredSaving] = useState(false);
   const [credMsg, setCredMsg] = useState(null);
+  const [pushStatuses, setPushStatuses] = useState({});
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -299,10 +300,12 @@ const AdminPanel = () => {
         case 'customers':
           const customersData = await api('GET', '/admin/users?role=customer');
           setUsers(customersData);
+          fetchPushStatuses(customersData);
           break;
         case 'drivers':
           const allDriversData = await api('GET', '/admin/users?role=driver');
           setUsers(allDriversData);
+          fetchPushStatuses(allDriversData);
           break;
         case 'orders':
           const ordersData = await api('GET', '/admin/orders');
@@ -370,6 +373,42 @@ const AdminPanel = () => {
       loadData();
     } catch (error) {
       console.error('Failed to deactivate driver');
+    }
+  };
+
+  const handleTestPushUser = async (u) => {
+    try {
+      const res = await api('POST', `/admin/test-push/${u.id}`);
+      const status = res?.delivery?.status;
+      const onesignalId = res?.delivery?.onesignal_id;
+      let msg = `Push отправлен пользователю ${u.name || u.phone}.`;
+      if (status === 'sent') {
+        msg += `\n\n✓ OneSignal принял (id: ${onesignalId || '—'}).\nЕсли пользователь подписан — он получит push в течение нескольких секунд.`;
+      } else if (status === 'no_subscription') {
+        msg += `\n\n⚠ Пользователь НЕ подписан на push. Попросите его открыть сайт, разрешить уведомления и проверить /push-debug.`;
+      } else if (status === 'failed' || status === 'error') {
+        msg += `\n\n✗ Ошибка отправки. Детали в системных логах.`;
+      } else {
+        msg += `\n\nСтатус: ${status || 'неизвестен'}`;
+      }
+      alert(msg);
+      // Update push status for that user
+      fetchPushStatuses([u]);
+    } catch (e) {
+      alert(e.response?.data?.detail || e.message || 'Ошибка отправки push');
+    }
+  };
+
+  const fetchPushStatuses = async (userList) => {
+    if (!userList || userList.length === 0) return;
+    try {
+      const ids = userList.map(u => u.id);
+      const res = await api('POST', '/admin/push-status', { user_ids: ids });
+      if (res?.statuses) {
+        setPushStatuses(prev => ({ ...prev, ...res.statuses }));
+      }
+    } catch (e) {
+      // Silent fail — status will simply remain undefined
     }
   };
 
@@ -765,10 +804,25 @@ const AdminPanel = () => {
         </div>
       </div>
 
+      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+        <span>Push:</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>Подписан</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>Заблокировал в браузере</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-500"></span>Не активна</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-slate-300"></span>Не подписывался</span>
+        <button
+          onClick={() => fetchPushStatuses(filteredUsers)}
+          className="ml-auto text-purple-600 hover:underline"
+        >
+          Обновить статусы
+        </button>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
         <table className="w-full">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
+              <th className="text-left p-4 text-sm font-medium text-slate-600">ID / Push</th>
               <th className="text-left p-4 text-sm font-medium text-slate-600">Телефон</th>
               <th className="text-left p-4 text-sm font-medium text-slate-600">ФИО</th>
               {role === 'driver' && (
@@ -785,6 +839,45 @@ const AdminPanel = () => {
           <tbody>
             {filteredUsers.map((u) => (
               <tr key={u.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { navigator.clipboard?.writeText(u.id); }}
+                      title={`Скопировать ID: ${u.id}`}
+                      className="font-mono text-xs text-slate-500 hover:text-slate-900 cursor-pointer"
+                      data-testid={`user-id-${u.id}`}
+                    >
+                      {u.id.substring(0, 8)}…
+                    </button>
+                    {(() => {
+                      const ps = pushStatuses[u.id];
+                      const map = {
+                        subscribed: { dot: 'bg-green-500', title: 'Подписан на push' },
+                        blocked: { dot: 'bg-red-500', title: 'Заблокировал уведомления в браузере' },
+                        pending: { dot: 'bg-yellow-500', title: 'Подписка существует, но не активна' },
+                        not_registered: { dot: 'bg-slate-300', title: 'Не подписан' },
+                        no_onesignal: { dot: 'bg-slate-200', title: 'OneSignal не настроен' },
+                        error: { dot: 'bg-orange-400', title: 'Ошибка проверки' },
+                      };
+                      const meta = map[ps] || { dot: 'bg-slate-200', title: 'Загрузка...' };
+                      return (
+                        <span
+                          className={`inline-block w-2.5 h-2.5 rounded-full ${meta.dot}`}
+                          title={meta.title}
+                          data-testid={`push-status-${u.id}`}
+                        />
+                      );
+                    })()}
+                    <button
+                      onClick={() => handleTestPushUser(u)}
+                      title="Отправить тестовый push этому пользователю"
+                      className="p-1 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded"
+                      data-testid={`test-push-${u.id}`}
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </td>
                 <td className="p-4">
                   <span className="font-medium text-slate-900">{u.phone}</span>
                 </td>

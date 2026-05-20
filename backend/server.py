@@ -2105,13 +2105,78 @@ async def push_diagnostics(user_id: str, user: dict = Depends(get_admin_user)):
 
 @admin_router.post("/test-push")
 async def test_push(user: dict = Depends(get_admin_user)):
-    """Send a test push notification"""
+    """Send a test push notification to admin themselves"""
     settings = await db.settings.find_one({"id": "main"})
     if not settings or not settings.get("onesignal_app_id"):
         raise HTTPException(status_code=400, detail="OneSignal не настроен")
     
     await send_notification(user["id"], "Тест Push", "Push-уведомления работают!", "push")
     return {"success": True, "message": "Тестовый push отправлен"}
+
+@admin_router.post("/push-status")
+async def push_status_bulk(payload: dict, user: dict = Depends(get_admin_user)):
+    """Returns push subscription status for a list of user_ids.
+    Body: {"user_ids": ["uuid1", "uuid2", ...]}
+    Returns: {"statuses": {"uuid1": "subscribed", "uuid2": "blocked", "uuid3": "unknown", ...}}
+    """
+    user_ids = payload.get("user_ids") or []
+    if not isinstance(user_ids, list) or len(user_ids) > 100:
+        raise HTTPException(status_code=400, detail="user_ids must be a list (max 100)")
+    settings = await db.settings.find_one({"id": "main"})
+    app_id = (settings or {}).get("onesignal_app_id", "")
+    api_key = (settings or {}).get("onesignal_api_key", "")
+    if not app_id or not api_key:
+        return {"statuses": {uid: "no_onesignal" for uid in user_ids}}
+    import requests as http_requests
+    is_v2 = api_key.startswith("os_v2_")
+    headers = {"Authorization": (f"Key {api_key}" if is_v2 else f"Basic {api_key}")}
+    statuses = {}
+    async def check_one(uid: str):
+        try:
+            url = f"https://api.onesignal.com/apps/{app_id}/users/by/external_id/{uid}"
+            r = http_requests.get(url, headers=headers, timeout=5)
+            if r.status_code == 404:
+                statuses[uid] = "not_registered"
+                return
+            if r.status_code != 200:
+                statuses[uid] = "error"
+                return
+            data = r.json()
+            subs = data.get("subscriptions") or []
+            # Find any enabled subscription
+            active = next((s for s in subs if s.get("enabled") and s.get("notification_types", 0) > 0), None)
+            if active:
+                statuses[uid] = "subscribed"
+            elif any(s.get("notification_types") == -2 for s in subs):
+                statuses[uid] = "blocked"
+            elif subs:
+                statuses[uid] = "pending"  # has subscription record but not enabled
+            else:
+                statuses[uid] = "not_registered"
+        except Exception:
+            statuses[uid] = "error"
+    # Run sequentially (sync requests inside async); limit is 100
+    for uid in user_ids:
+        await check_one(uid)
+    return {"statuses": statuses}
+
+
+@admin_router.post("/test-push/{user_id}")
+async def test_push_to_user(user_id: str, user: dict = Depends(get_admin_user)):
+    """Send a test push to a specific user (driver/customer) — admin verifies subscription."""
+    settings = await db.settings.find_one({"id": "main"})
+    if not settings or not settings.get("onesignal_app_id"):
+        raise HTTPException(status_code=400, detail="OneSignal не настроен")
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "name": 1, "phone": 1, "role": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    await send_notification(user_id, "Проверка связи", f"Это тест от администратора. Если видите — push работает.", "push")
+    last = await db.notifications.find_one(
+        {"user_id": user_id},
+        {"_id": 0, "status": 1, "onesignal_id": 1},
+        sort=[("sent_at", -1)]
+    )
+    return {"success": True, "target": target, "delivery": last}
 
 
 # ============ SETTINGS ROUTES ============

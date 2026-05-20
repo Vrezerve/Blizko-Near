@@ -106,14 +106,13 @@ const PushOptInBanner = () => {
       refresh();
       setBusy(false);
       const s = getState();
-      if (s.granted && s.optedIn) {
+      if (s.granted) {
+        // Permission granted — close the banner regardless of optIn state.
+        // optIn completes asynchronously; once subscription is ready, OneSignalInit will login the user.
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
       } else if (s.denied) {
         alert('Уведомления заблокированы в браузере. Откройте настройки сайта (замок слева от адреса) → Разрешения → Уведомления → Разрешить.');
-      } else if (s.granted && !s.optedIn) {
-        // Permission yes but subscription failed — try again in ~2s
-        setTimeout(() => refresh(), 2000);
       }
     }, 800);
   };
@@ -124,6 +123,8 @@ const PushOptInBanner = () => {
   };
 
   if (!user) return null;
+  // Hide the banner for admin role — they have a dedicated push tester in admin panel
+  if (user.role === 'admin') return null;
 
   const { ready, granted, denied, optedIn } = state;
   const subscribed = granted || optedIn;
