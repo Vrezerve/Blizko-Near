@@ -195,6 +195,8 @@ class SettingsUpdate(BaseModel):
     sms_ru_api_key: Optional[str] = None
     onesignal_app_id: Optional[str] = None
     onesignal_api_key: Optional[str] = None
+    onesignal_android_app_id: Optional[str] = None
+    onesignal_android_api_key: Optional[str] = None
     yandex_map_api_key: Optional[str] = None
     google_map_api_key: Optional[str] = None
     twogis_api_key: Optional[str] = None
@@ -461,62 +463,77 @@ async def send_notification(user_id: str, title: str, message: str, notification
     # ===== Push route =====
     if send_via_push and onesignal_app_id and onesignal_api_key:
         try:
+            # Build list of OneSignal apps to send to: primary (web) + optional Android
+            android_app_id = (settings or {}).get("onesignal_android_app_id", "")
+            android_api_key = (settings or {}).get("onesignal_android_api_key", "")
+            os_apps = [(onesignal_app_id, onesignal_api_key, "web")]
+            if android_app_id and android_api_key:
+                os_apps.append((android_app_id, android_api_key, "android"))
+            
             import requests as http_requests
-            is_v2_key = onesignal_api_key.startswith("os_v2_")
-            base_url = "https://api.onesignal.com" if is_v2_key else "https://onesignal.com/api/v1"
-            auth_header = f"Key {onesignal_api_key}" if is_v2_key else f"Basic {onesignal_api_key}"
-            headers = {
-                "Content-Type": "application/json; charset=utf-8",
-                "Authorization": auth_header
-            }
-            payload = {
-                "app_id": onesignal_app_id,
-                "target_channel": "push",
-                "headings": {"en": title, "ru": title},
-                "contents": {"en": message, "ru": message},
-                # Target by external_id (web SDK) AND by tag user_id (mobile WebView wrapper) — whichever the device has
-                "include_aliases": {"external_id": [user_id]},
-                "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}],
-            }
-            # OneSignal can't have both include_aliases AND filters in one request — split: try alias first, then tag as fallback
-            attempts = [
-                {**payload, "filters": None},
-                {**{k: v for k, v in payload.items() if k != "include_aliases"}, "filters": payload["filters"]},
-            ]
-            sent_id = None
-            last_error = None
-            attempt_logs = []  # full per-attempt diagnostic
-            for idx, body in enumerate(attempts):
-                body = {k: v for k, v in body.items() if v is not None}
-                method = "alias_external_id" if idx == 0 else "tag_user_id"
-                attempt_info = {"method": method, "request": body}
-                try:
-                    resp = http_requests.post(f"{base_url}/notifications", json=body, headers=headers, timeout=10)
-                    result = resp.json() if resp.content else {}
-                    attempt_info["http_status"] = resp.status_code
-                    attempt_info["response"] = result
-                except Exception as e:
-                    last_error = str(e)
-                    attempt_info["exception"] = str(e)
+            all_attempts = []
+            any_sent_id = None
+            last_error_overall = None
+            for app_id_to_use, api_key_to_use, app_label in os_apps:
+                is_v2_key = api_key_to_use.startswith("os_v2_")
+                base_url = "https://api.onesignal.com" if is_v2_key else "https://onesignal.com/api/v1"
+                auth_header = f"Key {api_key_to_use}" if is_v2_key else f"Basic {api_key_to_use}"
+                headers = {
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Authorization": auth_header
+                }
+                base_payload = {
+                    "app_id": app_id_to_use,
+                    "target_channel": "push",
+                    "headings": {"en": title, "ru": title},
+                    "contents": {"en": message, "ru": message},
+                    "include_aliases": {"external_id": [user_id]},
+                    "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}],
+                }
+                attempts = [
+                    {**base_payload, "filters": None},
+                    {**{k: v for k, v in base_payload.items() if k != "include_aliases"}, "filters": base_payload["filters"]},
+                ]
+                sent_id = None
+                last_error = None
+                attempt_logs = []
+                for idx, body in enumerate(attempts):
+                    body = {k: v for k, v in body.items() if v is not None}
+                    method = "alias_external_id" if idx == 0 else "tag_user_id"
+                    attempt_info = {"app": app_label, "method": method, "request": body}
+                    try:
+                        resp = http_requests.post(f"{base_url}/notifications", json=body, headers=headers, timeout=10)
+                        result = resp.json() if resp.content else {}
+                        attempt_info["http_status"] = resp.status_code
+                        attempt_info["response"] = result
+                    except Exception as e:
+                        last_error = str(e)
+                        attempt_info["exception"] = str(e)
+                        attempt_logs.append(attempt_info)
+                        continue
                     attempt_logs.append(attempt_info)
-                    continue
-                attempt_logs.append(attempt_info)
-                if result.get("id"):
-                    sent_id = result["id"]
-                    break
-                last_error = result
-            if sent_id:
+                    if result.get("id"):
+                        sent_id = result["id"]
+                        break
+                    last_error = result
+                all_attempts.extend(attempt_logs)
+                if sent_id and not any_sent_id:
+                    any_sent_id = sent_id
+                if not sent_id:
+                    last_error_overall = last_error
+            # Final outcome (across web + android apps)
+            if any_sent_id:
                 notification["status"] = "sent"
-                notification["onesignal_id"] = sent_id
+                notification["onesignal_id"] = any_sent_id
                 await system_log("info", "push", f"Push отправлен: {title}", {
                     "user_id": user_id,
-                    "onesignal_id": sent_id,
+                    "onesignal_id": any_sent_id,
                     "title": title,
                     "channel": "push",
-                    "attempts": attempt_logs,
+                    "attempts": all_attempts,
                 })
             else:
-                err_str = str(last_error).lower()
+                err_str = str(last_error_overall).lower()
                 if "not subscribed" in err_str or "invalid_aliases" in err_str or "no subscribers" in err_str:
                     notification["status"] = "no_subscription"
                     await system_log("info", "push", f"Push пропущен (не подписан): {title}", {
@@ -524,16 +541,16 @@ async def send_notification(user_id: str, title: str, message: str, notification
                         "title": title,
                         "channel": "push",
                         "reason": "no_active_subscription",
-                        "attempts": attempt_logs,
+                        "attempts": all_attempts,
                     })
                 else:
                     notification["status"] = "failed"
-                    notification["error"] = str(last_error)[:500]
-                    await system_log("warning", "push", f"Push не отправлен: {last_error}", {
+                    notification["error"] = str(last_error_overall)[:500]
+                    await system_log("warning", "push", f"Push не отправлен: {last_error_overall}", {
                         "user_id": user_id,
                         "title": title,
                         "channel": "push",
-                        "attempts": attempt_logs,
+                        "attempts": all_attempts,
                     })
         except Exception as e:
             notification["status"] = "error"
