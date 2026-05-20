@@ -50,6 +50,14 @@ const PushOptInBanner = () => {
     window.OneSignalDeferred = window.OneSignalDeferred || [];
     window.OneSignalDeferred.push((OneSignal) => {
       refresh();
+      // Auto opt-in if browser already granted permission but subscription not active
+      try {
+        const granted = OneSignal.Notifications?.permission === true || OneSignal.Notifications?.permissionNative === 'granted';
+        const sub = OneSignal.User?.PushSubscription;
+        if (granted && !sub?.id && sub?.optIn) {
+          sub.optIn().then(() => refresh()).catch(() => {});
+        }
+      } catch (_) {}
       if (listenerSetRef.current) return;
       try {
         OneSignal.Notifications?.addEventListener?.('permissionChange', (granted) => {
@@ -79,38 +87,35 @@ const PushOptInBanner = () => {
       setBusy(false);
       return;
     }
-    let triggered = false;
-    // Try methods in order of preference
+    // v16 split flow: 1) request browser permission, 2) opt user into push subscription
     try {
       if (OS.Notifications?.requestPermission) {
-        // Direct browser permission request (requires user gesture — we're inside click)
         await OS.Notifications.requestPermission();
-        triggered = true;
       }
-    } catch (e) { /* fall through */ }
-    if (!triggered) {
-      try {
-        if (OS.Slidedown?.promptPush) {
-          await OS.Slidedown.promptPush({ force: true });
-          triggered = true;
-        }
-      } catch (_) {}
-    }
+    } catch (e) { /* ignore */ }
+    try {
+      // CRITICAL: in v16, optIn() actually creates the push subscription (VAPID token)
+      if (OS.User?.PushSubscription?.optIn) {
+        await OS.User.PushSubscription.optIn();
+      } else if (OS.Slidedown?.promptPush) {
+        await OS.Slidedown.promptPush({ force: true });
+      }
+    } catch (_) {}
     // Refresh state after a short delay
     setTimeout(() => {
       refresh();
       setBusy(false);
       const s = getState();
-      if (s.granted) {
+      if (s.granted && s.optedIn) {
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
       } else if (s.denied) {
-        // Browser-level block — show actionable hint
         alert('Уведомления заблокированы в браузере. Откройте настройки сайта (замок слева от адреса) → Разрешения → Уведомления → Разрешить.');
-      } else if (!triggered) {
-        alert('Не удалось вызвать запрос разрешения. Обновите страницу и попробуйте снова.');
+      } else if (s.granted && !s.optedIn) {
+        // Permission yes but subscription failed — try again in ~2s
+        setTimeout(() => refresh(), 2000);
       }
-    }, 500);
+    }, 800);
   };
 
   const handleDismiss = () => {
@@ -144,7 +149,12 @@ const PushOptInBanner = () => {
     );
   }
 
-  if (!ready) return null; // OneSignal not yet loaded — show nothing
+  if (!ready) return null;
+  // Once browser permission granted — close the banner.
+  // optIn() in v16 is needed to materialize the VAPID subscription, but it usually
+  // succeeds within a few seconds. We auto-trigger it from handleEnable, and the
+  // PushSubscription change event will fire when sub.id becomes real.
+  if (granted) return null;
   if (subscribed) return null;
   if (dismissed && !denied) return null;
 

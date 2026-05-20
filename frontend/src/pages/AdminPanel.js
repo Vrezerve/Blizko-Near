@@ -1633,6 +1633,8 @@ const AdminPanel = () => {
                       let summary = '';
                       if (sub.enabled === false && sub.notification_types === -2) {
                         summary = '<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:8px;margin-bottom:12px"><b>⚠ Пользователь ЗАБЛОКИРОВАЛ уведомления в браузере.</b><br/>Когда появился запрос разрешения — он нажал «Block». Push доставлять некуда.<br/>Чтобы исправить: открыть замок в адресной строке → разрешения → уведомления → Allow.</div>';
+                      } else if (sub.enabled === false && (sub.notification_types === -99 || sub.notification_types === -22)) {
+                        summary = '<div style="background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:12px;border-radius:8px;margin-bottom:12px"><b>Разрешение получено, но подписка не завершена.</b><br/>SDK не вызвал <code>PushSubscription.optIn()</code>. Это исправлено в новой версии — обновите страницу.</div>';
                       } else if (sub.enabled === false) {
                         summary = '<div style="background:#fef3c7;border:1px solid #fde68a;color:#854d0e;padding:12px;border-radius:8px;margin-bottom:12px"><b>Подписка существует, но disabled.</b><br/>Скорее всего токен устарел или service worker не активен.</div>';
                       } else if (!sub.token) {
