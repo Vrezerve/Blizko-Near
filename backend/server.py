@@ -477,7 +477,6 @@ async def send_notification(user_id: str, title: str, message: str, notification
                 # Target by external_id (web SDK) AND by tag user_id (mobile WebView wrapper) — whichever the device has
                 "include_aliases": {"external_id": [user_id]},
                 "filters": [{"field": "tag", "key": "user_id", "relation": "=", "value": user_id}],
-                "channel_for_external_user_ids": "push",
             }
             # OneSignal can't have both include_aliases AND filters in one request — split: try alias first, then tag as fallback
             attempts = [

@@ -157,11 +157,33 @@ const PushOptInBanner = () => {
         </p>
         <p className="push-banner-sub">
           {denied
-            ? 'Откройте замок слева от адреса → разрешите уведомления'
+            ? 'Нажмите чтобы увидеть как разблокировать'
             : 'Когда водитель примет заказ — узнаете сразу'}
         </p>
       </div>
-      {!denied && (
+      {denied ? (
+        <button
+          type="button"
+          className="push-banner-btn"
+          onClick={() => {
+            const ua = navigator.userAgent.toLowerCase();
+            let steps;
+            if (ua.includes('safari') && !ua.includes('chrome')) {
+              steps = 'Safari → Настройки → Сайты → Уведомления → найдите ryadom22.ru → выберите «Разрешить»';
+            } else if (ua.includes('firefox')) {
+              steps = 'Firefox → нажмите на замок слева от адреса → Очистить разрешения → перезагрузите страницу';
+            } else if (ua.includes('android')) {
+              steps = 'Android Chrome → ⋮ (меню) → Настройки → Настройки сайтов → Уведомления → найдите ryadom22.ru → Разрешить';
+            } else {
+              steps = 'Chrome → нажмите на 🔒 слева от адреса → Настройки сайта → Уведомления → Разрешить → обновите страницу';
+            }
+            alert('Чтобы разблокировать:\n\n' + steps);
+          }}
+          data-testid="push-opt-in-howto"
+        >
+          Как включить
+        </button>
+      ) : (
         <button
           type="button"
           className="push-banner-btn"
