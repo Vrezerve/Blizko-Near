@@ -64,3 +64,13 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 ### Design quirks (низкий приоритет)
 - [ ] Map background (teal grid) "просвечивает" на экранах авторизации — заменить на нейтральный фон
 - [ ] Водительский auth-экран без чекбоксов согласия (legal review)
+
+## Изменения — June 2026 (iteration 17)
+- [x] Верхний бар (TopBar.jsx): белый, прижат к верху — бургер | аватар+имя (ellipsis) | статус онлайн/не в сети (customer + driver)
+- [x] Fab-bar: убрана первая фикс. кнопка, иконки сверху, подписи снизу
+- [x] PWA: динамический манифест GET /api/manifest.json, InstallPrompt баннер (каждый визит если не установлено), иконки 192/512 + короткое имя + текст — из админки (upload-pwa-icon)
+- [x] Отключение карты: тумблер map_enabled в админке; вместо карты — фоновое изображение (map_bg_size/position/repeat)
+- [x] Регистрация по звонку sms.ru callcheck: /api/auth/callcheck/start|status, тумблер call_verify_enabled (только новые пассажиры), rate limit (per phone + 5/час на устройство), тексты и таймеры из админки
+- [x] Фикс media queries .app-container/.bottom-sheet (единый брейкпоинт 768px, 28rem)
+- [x] Push-баннер сдвинут ниже TopBar (top: 68px)
+- Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend

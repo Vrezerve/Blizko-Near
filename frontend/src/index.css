@@ -490,7 +490,7 @@ h1, h2, h3, h4, h5, h6 {
 /* ============ PUSH OPT-IN BANNER ============ */
 .push-banner {
   position: fixed;
-  top: 12px;
+  top: 68px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
