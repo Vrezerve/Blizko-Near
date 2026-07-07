@@ -74,3 +74,12 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Фикс media queries .app-container/.bottom-sheet (единый брейкпоинт 768px, 28rem)
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
+
+## Багфиксы — June 2026 (iteration 18)
+- [x] Восстановлен вызов callcheck/start в CustomerAuth (регистрация показывала SMS-экран вместо звонка)
+- [x] Новый экран звонка по ТЗ: «Подтверждение номера телефона», номер, 4 блока цифр (подставляются при подтверждении), таймер «Осталось времени», кнопка «Позвонить» (tel:, Android/iOS), «Отмена»
+- [x] test_mode шорткат: POST /auth/callcheck/status {test_confirm:true} — подтверждение без звонка (аналог кода 1234)
+- [x] Повторный полл после confirmed пере-выдаёт токен (не «истекло»)
+- [x] ПК-вёрстка = планшет (28rem, push-banner max-width 26rem)
+- [x] Русификация ~33 сообщений об ошибках бэкенда (Invalid code → «Неверный код» и т.д.)
+- Тесты: /app/test_reports/iteration_18.json — 100% backend (10/10) + 100% frontend

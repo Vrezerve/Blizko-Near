@@ -950,7 +950,17 @@ async def callcheck_status(data: dict):
     if not rec or (device_id and rec.get("device_id") != device_id):
         raise HTTPException(status_code=404, detail="Проверка не найдена")
 
-    if rec.get("status") in ("confirmed", "expired"):
+    if rec.get("status") == "expired":
+        return {"status": "expired"}
+    if rec.get("status") == "confirmed":
+        # Re-issue confirmation to the same device (lost response / parallel confirm)
+        user = await db.users.find_one({"phone": rec["phone"], "role": rec["role"]})
+        if user:
+            token = create_access_token(user["id"], user["role"])
+            user.pop("_id", None)
+            user.pop("pin_hash", None)
+            user.pop("password_hash", None)
+            return {"status": "confirmed", "token": token, "user": user, "has_pin": user.get("has_pin", False)}
         return {"status": "expired"}
 
     now = datetime.now(timezone.utc)
