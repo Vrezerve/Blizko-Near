@@ -1790,7 +1790,7 @@ const AdminPanel = () => {
                 value={settings.call_verify_title || ''}
                 onChange={(e) => setSettings({...settings, call_verify_title: e.target.value})}
                 className="input-field"
-                placeholder="Подтвердите номер звонком"
+                placeholder="Подтверждение номера телефона"
               />
             </div>
 
@@ -1801,7 +1801,7 @@ const AdminPanel = () => {
                 value={settings.call_verify_instruction || ''}
                 onChange={(e) => setSettings({...settings, call_verify_instruction: e.target.value})}
                 className="input-field min-h-[80px]"
-                placeholder="Позвоните на этот номер с вашего телефона {phone}. Звонок бесплатный..."
+                placeholder="Вам необходимо позвонить по номеру ниже для подтверждения. Звонок бесплатный..."
               />
             </div>
 

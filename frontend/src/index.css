@@ -269,22 +269,53 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ============ CALL VERIFICATION ============ */
-.call-verify-number {
+.call-verify-phone-box {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.02em;
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.call-digit-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.call-digit-box {
+  width: 52px;
+  height: 60px;
+  border-radius: 14px;
+  border: 2px solid #e2e8f0;
+  background: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: #16a34a;
-  color: white;
-  border-radius: 16px;
-  padding: 16px;
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  text-decoration: none;
-  transition: background-color 0.15s ease;
+  color: #0f172a;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
-.call-verify-number:hover { background: #15803d; }
+.call-digit-box.filled {
+  border-color: #16a34a;
+  background: #dcfce7;
+  color: #15803d;
+  animation: fab-pop-in 0.25s ease-out;
+}
+
+.call-verify-success {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #15803d;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
 
 .call-verify-waiting {
   display: flex;
@@ -498,6 +529,7 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 10px;
   width: calc(100% - 24px);
+  max-width: 26rem;
   max-width: 480px;
   background: #0f172a;
   color: white;

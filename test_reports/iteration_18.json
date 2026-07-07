@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 18 verification of 3 bug fixes (call-verification screen restored, PC layout=tablet 28rem, Russian error details). Backend: 10/10 pytest cases pass — callcheck/start returns method='call' with verify_id+call_phone+timeout+poll_interval+title+instruction for new customer phone; existing customer +79001234567 returns method='sms'; rate-limit 429 with detail 'RATE_LIMIT:N' triggered on immediate second call for same phone; test_confirm shortcut on /callcheck/status returns {status:'confirmed', token, user, has_pin:false} and creates the customer; /callcheck/status unknown verify_id → 404 'Проверка не найдена'; missing verify_id → 400 'Не указан идентификатор проверки'; Russian details verified for verify-code wrong code ('Неверный код'), /api/auth/me no token ('Не авторизован'), /api/admin/login wrong creds ('Неверный email или пароль'). Frontend E2E: /auth/customer with new random +7977XXXXXXX phone + both consents → call-verify-screen appears (bug fix VERIFIED). All 6 data-testids present (call-verify-number '8-800-777-9999', call-digit-boxes with 4 empty .call-digit-box divs, call-verify-timer 'Осталось времени: 5:00', call-verify-waiting with user phone in Russian text, call-verify-call-btn as <a href='tel:+78007779999'>, call-verify-cancel). Title 'Подтверждение номера телефона'. Backend test_confirm via curl creates user d64c8939, returns token+user+has_pin=false. Layout: at 1920x800 .app-container = 448px width (28rem) centered (left/right margins 736px equal), .bottom-sheet also 448px. Tablet 820x1180 identical layout (448px centered). Mobile 390x844 full width. All settings mutated during tests restored to originals (call_verify_enabled=true, test_mode=false, call_verify_rate_limit=60).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/callcheck/status", "issue": "test_confirm E2E confirmation from external actor cannot propagate to a polling browser: after test_confirm sets status='confirmed', the browser's next poll enters the `if rec.get('status') in ('confirmed','expired'): return {'status':'expired'}` branch and gets 'expired', which the UI treats as 'Время подтверждения истекло' and returns to phone step. The receiving-side E2E UX described in the review request (browser shows 'Номер подтверждён!' after an external test_confirm curl) is therefore NOT observable — only the client that sends test_confirm gets the confirmed+token response. If the intent is to support external test_confirm to drive UI success state, consider (a) letting a 'confirmed' status be re-returned to the same device_id for a short window (e.g., 5s) OR (b) storing the token/user snapshot on the record and re-issuing on the next poll."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/auth/customer background", "issues": ["When map_enabled default color is teal/green (not admin's red), the map-background fills the whole viewport including the container margins on desktop — visually the centered white bottom-sheet floats over the full-screen tiled map, which can look busy on large screens. Cosmetic only; layout math is correct (28rem centered)."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration18_callverify_bugfix.py",
+    "/app/test_reports/pytest/iteration18_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Decide whether external test_confirm should propagate to the polling browser's UI (see backend_issues.minor). Currently the UI does not display 'Номер подтверждён!' when confirmation is triggered by a different client — the polling browser gets 'expired'. Backend logic itself is correct for real sms.ru upstream (only one caller polls).",
+    "OPTIONAL: On desktop the map background tiles fill full 1920px width behind the 28rem container. Consider limiting the .map-background to inside .app-container (or adding a plain neutral outer background) so the tiled pattern doesn't dominate large screens."
+  ],
+  "critical_code_review_comments": [
+    "server.py:953-954 (callcheck/status) — returning 'expired' for an already-confirmed record blocks the polling browser from receiving the token when another client (e.g., automated test_confirm curl) triggers confirmation. Consider issuing the confirmed token to the polling client instead. In production this is unlikely to happen (only one caller polls), but it breaks the documented test-mode E2E path.",
+    "CustomerAuth.js handleSendCode — good: pin-check before callcheck/start avoids sms.ru credit consumption for existing users. However when callcheck/start returns 200 with method='sms' (fallback), the flow silently falls through to sendCode() — user is not informed that call-verify was attempted-and-failed. LOW.",
+    "server.py:870-940 (callcheck_start) — the rate-limit-hour count is queried BEFORE the upstream sms.ru call; if upstream fails (return method='sms' fallback at line 910/914), no callcheck_requests row is inserted so the rate-limit slot isn't consumed. Correct behavior for graceful fallback, but note this leaves a small race window if two devices call within milliseconds.",
+    "CustomerAuth.js poll effect line 172-177 — 'expired' status shows generic 'Время подтверждения истекло' toast even if the true cause is 'someone else already confirmed'. Consider a distinct message when the status transition was 'waiting→confirmed→expired' vs a true timeout. LOW."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration18_callverify_bugfix.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% — all data-testids present, layout matches spec, bug fix verified"},
+  "test_credentials": "Admin admin@taxi.local/admin123. Customer +79001234567 code 1234 (with test_mode=true). Driver +79007654321. All confirmed working.",
+  "seed_data_creation": "1 new customer created during E2E: phone +79778788481, id d64c8939-9a3a-4c22-962e-4a5b33292b71 (via test_confirm shortcut). Not cleaned up — harmless leftover TEST data. 2 callcheck_requests documents inserted (one from backend pytest, one from browser test). Settings mutated then RESTORED: call_verify_enabled=true, test_mode=false, call_verify_rate_limit=60.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 18 backend regression suite: pytest /app/backend/tests/test_iteration18_callverify_bugfix.py -v. Self-restores settings via fixture. IMPORTANT: Uses ONLY 2 new-phone callcheck/start calls (well below the 5/hour/device limit) — for future tests keep this budget in mind since sms.ru api key is the user's REAL key. Frontend: when typing a phone into phone-input, the field already shows '+7' placeholder — type ONLY the 10 mobile digits (do NOT prepend country code '7' or you'll get a double-7 like '+77988...'). The +7977XXXXXXX prefix worked for sms.ru upstream in this run. The E2E test_confirm-to-UI flow is NOT observable because the polling browser gets 'status:expired' after another client confirmed — this is a backend design behavior (server.py:953). Original settings on entry: call_verify_enabled=true, test_mode=false, call_verify_rate_limit=60.",
+  "rca of the issue": "All 3 reported bugs verified fixed. (1) CustomerAuth.js line 99 now correctly calls /auth/callcheck/start and switches to step='call' when method==='call'; the missing call was restored. (2) index.css uses a single 768px breakpoint with .app-container max-width:28rem — desktop and tablet render at identical 448px centered width. (3) Backend HTTPException details verified Russian on 3 spot-checked endpoints (verify-code, auth/me, admin/login) — no more English 'Invalid code'/'Not authenticated'/'Invalid credentials' leaks in these paths."
+}

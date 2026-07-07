@@ -298,23 +298,23 @@ async def get_current_user(request: Request) -> dict:
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
     if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail="Не авторизован")
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user = await db.users.find_one({"id": payload["sub"]})
         if not user:
-            raise HTTPException(status_code=401, detail="User not found")
+            raise HTTPException(status_code=401, detail="Пользователь не найден")
         user.pop("_id", None)
         return user
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
+        raise HTTPException(status_code=401, detail="Сессия истекла")
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Неверный токен")
 
 async def get_admin_user(request: Request) -> dict:
     user = await get_current_user(request)
     if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=403, detail="Требуется доступ администратора")
     return user
 
 async def log_action(action: str, user_id: str = None, details: dict = None):
@@ -706,10 +706,10 @@ async def send_verification_code(data: dict, request: Request):
     device_id = data.get("device_id")
     
     if not phone or not role:
-        raise HTTPException(status_code=400, detail="Phone and role required")
+        raise HTTPException(status_code=400, detail="Укажите телефон и роль")
     
     if not device_id:
-        raise HTTPException(status_code=400, detail="Device ID required")
+        raise HTTPException(status_code=400, detail="Требуется идентификатор устройства")
     
     # Check if device is blocked
     blocked = await check_device_blocked(device_id)
@@ -791,12 +791,12 @@ async def verify_code(data: VerifyCode):
         })
         
         if not verification:
-            raise HTTPException(status_code=400, detail="Invalid code")
+            raise HTTPException(status_code=400, detail="Неверный код")
         
         # Check if code expired
         expires_at = datetime.fromisoformat(verification["expires_at"])
         if datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=400, detail="Code expired")
+            raise HTTPException(status_code=400, detail="Срок действия кода истёк")
     
     # Find or check user
     user = await db.users.find_one({"phone": data.phone, "role": data.role})
@@ -844,7 +844,7 @@ async def verify_code(data: VerifyCode):
             
     elif data.role == "driver":
         if not user:
-            raise HTTPException(status_code=400, detail="Driver not registered")
+            raise HTTPException(status_code=400, detail="Водитель не зарегистрирован")
         if not user.get("is_activated", False):
             raise HTTPException(status_code=403, detail="AWAITING_ACTIVATION")
         # Update device_id on login
@@ -873,7 +873,7 @@ async def callcheck_start(data: dict):
     role = data.get("role")
     device_id = data.get("device_id")
     if not phone or not role or not device_id:
-        raise HTTPException(status_code=400, detail="Phone, role and device_id required")
+        raise HTTPException(status_code=400, detail="Укажите телефон, роль и устройство")
 
     blocked = await check_device_blocked(device_id)
     if blocked:
@@ -935,8 +935,8 @@ async def callcheck_start(data: dict):
         "call_phone_pretty": result.get("call_phone_pretty", ""),
         "timeout": timeout_sec,
         "poll_interval": int(settings.get("call_verify_poll_interval") or 3),
-        "title": settings.get("call_verify_title") or "Подтвердите номер звонком",
-        "instruction": settings.get("call_verify_instruction") or "Позвоните на этот номер с вашего телефона {phone}. Звонок бесплатный. Как только звонок поступит к нам, мы автоматически подтвердим ваш номер."
+        "title": settings.get("call_verify_title") or "Подтверждение номера телефона",
+        "instruction": settings.get("call_verify_instruction") or "Вам необходимо позвонить по номеру ниже для подтверждения. Звонок бесплатный. После звонка подтверждение произойдёт автоматически."
     }
 
 @auth_router.post("/callcheck/status")
@@ -944,11 +944,11 @@ async def callcheck_status(data: dict):
     verify_id = data.get("verify_id")
     device_id = data.get("device_id")
     if not verify_id:
-        raise HTTPException(status_code=400, detail="verify_id required")
+        raise HTTPException(status_code=400, detail="Не указан идентификатор проверки")
 
     rec = await db.callcheck_requests.find_one({"id": verify_id}, {"_id": 0})
     if not rec or (device_id and rec.get("device_id") != device_id):
-        raise HTTPException(status_code=404, detail="Verification not found")
+        raise HTTPException(status_code=404, detail="Проверка не найдена")
 
     if rec.get("status") in ("confirmed", "expired"):
         return {"status": "expired"}
@@ -960,14 +960,17 @@ async def callcheck_status(data: dict):
 
     settings = await db.settings.find_one({"id": "main"}) or {}
     api_key = settings.get("sms_ru_api_key", "")
-    try:
-        import requests as http_requests
-        resp = http_requests.get("https://sms.ru/callcheck/status", params={"api_id": api_key, "check_id": rec["check_id"], "json": 1}, timeout=10)
-        result = resp.json() if resp.content else {}
-    except Exception:
-        return {"status": "waiting"}
-
-    check_status = str(result.get("check_status", "400"))
+    # Test-mode shortcut (like code 1234): allows confirming without a real call
+    if settings.get("test_mode", True) and data.get("test_confirm"):
+        check_status = "401"
+    else:
+        try:
+            import requests as http_requests
+            resp = http_requests.get("https://sms.ru/callcheck/status", params={"api_id": api_key, "check_id": rec["check_id"], "json": 1}, timeout=10)
+            result = resp.json() if resp.content else {}
+        except Exception:
+            return {"status": "waiting"}
+        check_status = str(result.get("check_status", "400"))
     if check_status == "402":
         await db.callcheck_requests.update_one({"id": verify_id}, {"$set": {"status": "expired"}})
         return {"status": "expired"}
@@ -1016,7 +1019,7 @@ async def callcheck_status(data: dict):
 async def set_user_pin(data: SetPin, user: dict = Depends(get_current_user)):
     """Set or update user's PIN code"""
     if not data.pin or len(data.pin) != 4 or not data.pin.isdigit():
-        raise HTTPException(status_code=400, detail="PIN must be 4 digits")
+        raise HTTPException(status_code=400, detail="PIN-код должен состоять из 4 цифр")
     
     pin_hash = hash_password(data.pin)
     await db.users.update_one(
@@ -1036,10 +1039,10 @@ async def login_with_pin(data: LoginPin):
     
     user = await db.users.find_one({"phone": data.phone, "role": data.role})
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     if not user.get("pin_hash"):
-        raise HTTPException(status_code=400, detail="PIN not set")
+        raise HTTPException(status_code=400, detail="PIN-код не установлен")
     
     if not verify_password(data.pin, user["pin_hash"]):
         # Track failed attempts
@@ -1083,7 +1086,7 @@ async def reset_pin_request(data: ResetPinRequest, request: Request):
     
     user = await db.users.find_one({"phone": data.phone, "role": data.role})
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     code = str(secrets.randbelow(9000) + 1000)
     
@@ -1139,18 +1142,18 @@ async def reset_pin_verify(data: ResetPinVerify):
             "phone": data.phone, "code": data.code, "role": data.role
         })
         if not verification:
-            raise HTTPException(status_code=400, detail="Invalid code")
+            raise HTTPException(status_code=400, detail="Неверный код")
         
         expires_at = datetime.fromisoformat(verification["expires_at"])
         if datetime.now(timezone.utc) > expires_at:
-            raise HTTPException(status_code=400, detail="Code expired")
+            raise HTTPException(status_code=400, detail="Срок действия кода истёк")
     
     if not data.new_pin or len(data.new_pin) != 4 or not data.new_pin.isdigit():
-        raise HTTPException(status_code=400, detail="PIN must be 4 digits")
+        raise HTTPException(status_code=400, detail="PIN-код должен состоять из 4 цифр")
     
     user = await db.users.find_one({"phone": data.phone, "role": data.role})
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     pin_hash = hash_password(data.new_pin)
     await db.users.update_one(
@@ -1187,10 +1190,10 @@ async def check_has_pin(phone: str, role: str):
 @auth_router.post("/register-driver")
 async def register_driver(data: DriverCreate):
     if not data.agreed_terms or not data.agreed_privacy:
-        raise HTTPException(status_code=400, detail="Must agree to terms and privacy policy")
+        raise HTTPException(status_code=400, detail="Необходимо принять условия и политику конфиденциальности")
     
     if not data.device_id:
-        raise HTTPException(status_code=400, detail="Device ID required")
+        raise HTTPException(status_code=400, detail="Требуется идентификатор устройства")
     
     # Check if device is blocked
     blocked = await check_device_blocked(data.device_id)
@@ -1292,7 +1295,7 @@ async def update_location(data: LocationUpdate, user: dict = Depends(get_current
 async def create_order(data: OrderCreate, request: Request, user: dict = Depends(get_current_user)):
     client_ip = get_client_ip(request)
     if user["role"] != "customer":
-        raise HTTPException(status_code=403, detail="Only customers can create orders")
+        raise HTTPException(status_code=403, detail="Только пассажиры могут создавать заказы")
     
     # Check for existing pending order
     existing = await db.orders.find_one({
@@ -1300,7 +1303,7 @@ async def create_order(data: OrderCreate, request: Request, user: dict = Depends
         "status": {"$in": ["pending", "accepted"]}
     })
     if existing:
-        raise HTTPException(status_code=400, detail="You already have an active order")
+        raise HTTPException(status_code=400, detail="У вас уже есть активный заказ")
     
     # Check if user is blocked from ordering (3 min cooldown after cancellation)
     last_cancelled = await db.orders.find_one({
@@ -1432,13 +1435,13 @@ async def get_active_orders(user: dict = Depends(get_current_user)):
 async def accept_order(order_id: str, request: Request, data: dict = None, user: dict = Depends(get_current_user)):
     client_ip = get_client_ip(request)
     if user["role"] != "driver":
-        raise HTTPException(status_code=403, detail="Only drivers can accept orders")
+        raise HTTPException(status_code=403, detail="Только водители могут принимать заказы")
     
     if not user.get("is_activated"):
-        raise HTTPException(status_code=403, detail="Driver not activated")
+        raise HTTPException(status_code=403, detail="Водитель не активирован")
     
     if user.get("is_busy"):
-        raise HTTPException(status_code=400, detail="You already have an active order")
+        raise HTTPException(status_code=400, detail="У вас уже есть активный заказ")
     
     # Check balance
     balance = user.get("balance", 0)
@@ -1446,7 +1449,7 @@ async def accept_order(order_id: str, request: Request, data: dict = None, user:
     min_balance = -20 if is_reliable else 0
     
     if balance <= min_balance:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
+        raise HTTPException(status_code=400, detail="Недостаточно средств на балансе")
     
     # Get ETA from request body
     eta_minutes = None
@@ -1473,7 +1476,7 @@ async def accept_order(order_id: str, request: Request, data: dict = None, user:
     )
     
     if not result:
-        raise HTTPException(status_code=400, detail="Order no longer available")
+        raise HTTPException(status_code=400, detail="Заказ уже недоступен")
     
     # Update driver status and deduct balance
     await db.users.update_one(
@@ -1500,11 +1503,11 @@ async def accept_order(order_id: str, request: Request, data: dict = None, user:
 async def complete_order(order_id: str, request: Request, user: dict = Depends(get_current_user)):
     client_ip = get_client_ip(request)
     if user["role"] != "driver":
-        raise HTTPException(status_code=403, detail="Only drivers can complete orders")
+        raise HTTPException(status_code=403, detail="Только водители могут завершать заказы")
     
     order = await db.orders.find_one({"id": order_id, "driver_id": user["id"], "status": "accepted"})
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Заказ не найден")
     
     # Check 2 minute minimum
     accepted_at = datetime.fromisoformat(order["accepted_at"])
@@ -1534,13 +1537,13 @@ async def cancel_order(order_id: str, request: Request, user: dict = Depends(get
     client_ip = get_client_ip(request)
     order = await db.orders.find_one({"id": order_id})
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Заказ не найден")
     
     if user["role"] == "customer" and order["customer_id"] != user["id"]:
-        raise HTTPException(status_code=403, detail="Not your order")
+        raise HTTPException(status_code=403, detail="Это не ваш заказ")
     
     if user["role"] == "driver" and order["driver_id"] != user["id"]:
-        raise HTTPException(status_code=403, detail="Not your order")
+        raise HTTPException(status_code=403, detail="Это не ваш заказ")
     
     cancelled_by = "customer" if user["role"] == "customer" else "driver"
     if order["status"] == "accepted" and user["role"] == "customer":
@@ -1597,7 +1600,7 @@ async def report_problem(order_id: str, data: ProblemReport, request: Request, u
     client_ip = get_client_ip(request)
     order = await db.orders.find_one({"id": order_id})
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Заказ не найден")
     
     reporter_type = "driver" if user["role"] == "driver" else "customer"
     
@@ -1658,10 +1661,10 @@ async def report_problem(order_id: str, data: ProblemReport, request: Request, u
 @drivers_router.post("/toggle-ready")
 async def toggle_ready(user: dict = Depends(get_current_user)):
     if user["role"] != "driver":
-        raise HTTPException(status_code=403, detail="Only drivers")
+        raise HTTPException(status_code=403, detail="Только для водителей")
     
     if not user.get("is_activated"):
-        raise HTTPException(status_code=403, detail="Not activated")
+        raise HTTPException(status_code=403, detail="Водитель не активирован")
     
     new_status = not user.get("is_online", False)
     await db.users.update_one({"id": user["id"]}, {"$set": {"is_online": new_status}})
@@ -1689,7 +1692,7 @@ async def get_online_driver_locations(user: dict = Depends(get_admin_user)):
 async def update_driver_location(data: LocationUpdate, user: dict = Depends(get_current_user)):
     """Update driver location and broadcast to customer if on active order"""
     if user["role"] != "driver":
-        raise HTTPException(status_code=403, detail="Only drivers")
+        raise HTTPException(status_code=403, detail="Только для водителей")
     
     # Update location in DB
     await db.users.update_one(
@@ -1773,7 +1776,7 @@ async def get_driver_location(driver_id: str, user: dict = Depends(get_current_u
 async def admin_login(data: AdminLogin):
     admin = await db.users.find_one({"email": data.email, "role": "admin"})
     if not admin or not verify_password(data.password, admin.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="Неверный email или пароль")
     
     token = create_access_token(admin["id"], "admin")
     admin.pop("_id", None)
@@ -1854,7 +1857,7 @@ async def get_all_users(role: Optional[str] = None, user: dict = Depends(get_adm
 async def get_user_details(user_id: str, user: dict = Depends(get_admin_user)):
     target_user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
     
     # Get user's orders
     orders = await db.orders.find(
@@ -1904,7 +1907,7 @@ async def get_order_route(order_id: str, user: dict = Depends(get_admin_user)):
     """Get order details for route display"""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=404, detail="Заказ не найден")
     
     # Get customer info
     customer = await db.users.find_one({"id": order["customer_id"]}, {"_id": 0, "location": 1, "phone": 1, "name": 1})
@@ -2043,7 +2046,7 @@ async def upload_module_archive(module_id: str, file: UploadFile = File(...), us
     """Upload ZIP archive for a module"""
     module = await db.modules.find_one({"id": module_id})
     if not module:
-        raise HTTPException(status_code=404, detail="Module not found")
+        raise HTTPException(status_code=404, detail="Модуль не найден")
     if not file.filename.endswith('.zip'):
         raise HTTPException(status_code=400, detail="Допустим только формат ZIP")
     
@@ -2073,7 +2076,7 @@ async def toggle_module(module_id: str, user: dict = Depends(get_admin_user)):
     """Enable or disable a module"""
     module = await db.modules.find_one({"id": module_id})
     if not module:
-        raise HTTPException(status_code=404, detail="Module not found")
+        raise HTTPException(status_code=404, detail="Модуль не найден")
     
     new_state = not module.get("enabled", True)
     await db.modules.update_one({"id": module_id}, {"$set": {"enabled": new_state}})
@@ -2085,7 +2088,7 @@ async def delete_module(module_id: str, user: dict = Depends(get_admin_user)):
     """Remove a module and its archive"""
     module = await db.modules.find_one({"id": module_id})
     if not module:
-        raise HTTPException(status_code=404, detail="Module not found")
+        raise HTTPException(status_code=404, detail="Модуль не найден")
     
     # Remove archive file if exists
     archive_path = module.get("archive_path", "")
