@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 17 verification: 6 changes (TopBar, FabBar redesign, PWA dynamic manifest, admin map_enabled toggle, sms.ru callcheck registration, media queries) tested E2E. All 10 backend pytest cases green (manifest, public settings, admin settings save/read, PWA icon upload, callcheck disabled/existing/graceful/404/400, SMS regression). Frontend: customer & driver TopBars render (white bg, position:absolute, top:0), menu-btn/top-bar-name/top-bar-status all present, FabBar shows icon-above-label (flex-direction column), fab-modal open/close works, all 11 admin settings testids for map/PWA/call-verify cards found, save works, map_enabled=false replaces Yandex map with data-testid=map-disabled-bg. All mutated settings restored at end of tests (map_enabled=true, call_verify_enabled=false, test_mode=true).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Customer main + OneSignal auto-slidedown", "issues": ["OneSignal 'Получайте уведомления' slide-down banner overlays TopBar in top-right area on mobile viewport (390x844) — visually covers a portion of the top-bar-status pill and stole the burger click during automated testing until dismissed. Not a regression from this iteration but worth checking z-index priority when burger button is intended to be reachable."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_features.py",
+    "/app/test_reports/pytest/iteration17_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:2480-2503 (manifest.json) — icons array can be empty if no icons uploaded; some browsers warn on empty icons. Consider embedding a fallback base64 or default asset when both pwa_icon_192_url and app_icon_url are empty. LOW.",
+    "server.py:942-951 (callcheck/status) — endpoint returns 404 when the record exists but device_id mismatches. Correct security posture but log line would help debugging: system_log 'callcheck/status: device_id mismatch'. LOW.",
+    "server.py:904-914 (callcheck/start) — when sms.ru upstream fails (network or non-OK) endpoint gracefully falls back to {method:'sms'} which is the documented behavior. Good. But note: the caller's device_id one-hour count (line 900) is checked BEFORE the sms.ru attempt; a failed upstream still consumes a rate-limit slot conceptually only via `callcheck_requests` insert on success — that insert is skipped on failure, so rate limit is actually NOT consumed on failure. Verify this matches product intent.",
+    "InstallPrompt.jsx L37-38 — returns null if !settings AND early-returns before adding beforeinstallprompt handler cleanup in ordering; useEffect cleanup is fine but the axios .then chain doesn't respect an unmount race (missing isMounted guard). LOW.",
+    "index.html L23 fetch('/api/settings/public') — the OneSignal init block uses window.fetch on hard-coded relative path which works via ingress, but for local previews without the /api ingress this can silently fail. Consider REACT_APP_BACKEND_URL substitution at build. LOW."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_features.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% — all data-testids present, all flows worked"},
+  "test_credentials": "Admin admin@taxi.local/admin123 (verified). Customer +79001234567 code 1234. Driver +79007654321 code 1234. Confirmed test_mode restored to true.",
+  "seed_data_creation": "None permanent. During tests a PWA icon file (pwa_icon_192_*.png 1×1 PNG) was uploaded to /api/uploads and pwa_icon_192_url stored in settings; not restored. Admin settings (map_enabled/call_verify_*) were mutated and RESTORED to original snapshot via pytest fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 17 backend regression suite lives at /app/backend/tests/test_iteration17_features.py — self-restoring via fixture. Command: pytest /app/backend/tests/test_iteration17_features.py -v. IMPORTANT: The test_callcheck_new_phone_graceful_when_upstream_fails test asserts response NEVER returns 500 (allows 200 with method='sms' OR 'call', OR 429). If sms.ru api key becomes fully valid in future runs, expect method='call' occasionally. To exercise callcheck end-to-end you'd need a real phone. Note that driver TopBar uses menuTestId='driver-menu-btn', not 'menu-btn'. Frontend customer main flow requires SKIPPING PIN setup on the first login when no PIN exists — click 'Пропустить' or app redirects to /auth/pin next time.",
+  "rca of the issue": "N/A — all features shipping green."
+}

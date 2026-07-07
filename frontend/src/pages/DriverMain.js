@@ -9,6 +9,7 @@ import {
 import axios from 'axios';
 import YandexMap from '../components/YandexMap';
 import FabBar from '../components/FabBar';
+import TopBar from '../components/TopBar';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -573,7 +574,9 @@ const DriverMain = () => {
   return (
     <div className="app-container">
       {/* Map Background */}
-      {settings?.yandex_map_api_key ? (
+      {settings?.map_enabled === false ? (
+        <div className="map-background" data-testid="map-disabled-bg" />
+      ) : settings?.yandex_map_api_key ? (
         <YandexMap
           apiKey={settings.yandex_map_api_key}
           userLocation={userLocation}
@@ -584,25 +587,15 @@ const DriverMain = () => {
         <DriverMap userLocation={userLocation} />
       )}
       
-      <div className="relative z-10 min-h-[100dvh] flex flex-col">
-        {/* Header */}
-        <div className="p-4 flex items-center justify-between">
-          <button
-            data-testid="driver-menu-btn"
-            onClick={() => setShowMenu(true)}
-            className="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center"
-          >
-            <Menu className="w-5 h-5 text-slate-700" />
-          </button>
-          
-          <div className={`rounded-full shadow px-4 py-2 flex items-center gap-2 ${isReady ? 'bg-green-600' : 'bg-white'}`}>
-            <div className={`w-2 h-2 rounded-full ${isReady ? 'bg-white pulse-dot' : 'bg-slate-400'}`} />
-            <span className={`text-sm font-medium ${isReady ? 'text-white' : 'text-slate-700'}`}>
-              {isReady ? 'На линии' : 'Не на линии'}
-            </span>
-          </div>
-        </div>
+      <TopBar
+        user={user}
+        onMenuClick={() => setShowMenu(true)}
+        statusOnline={isReady}
+        statusText={isReady ? 'На линии' : 'Не в сети'}
+        menuTestId="driver-menu-btn"
+      />
 
+      <div className="relative z-10 min-h-[100dvh] flex flex-col pt-[60px]">
         <div className="flex-1 flex items-end">
           <div className="bottom-sheet slide-up with-fabbar">
             {renderContent()}
@@ -612,15 +605,7 @@ const DriverMain = () => {
 
       {/* Fab bar — always visible at bottom (no overlay) */}
       {!showMenu && !showProfile && !showHistory && (
-        <FabBar
-          role="driver"
-          primaryLabel={isReady ? 'На линии' : 'Заявки'}
-          onPrimaryClick={() => {
-            setShowMenu(false);
-            setShowProfile(false);
-            setShowHistory(false);
-          }}
-        />
+        <FabBar role="driver" />
       )}
 
       {/* Menu Drawer */}

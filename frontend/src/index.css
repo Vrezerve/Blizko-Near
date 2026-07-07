@@ -58,14 +58,8 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (min-width: 768px) {
   .app-container {
-    max-width: 48rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  }
-}
-
-@media (min-width: 1024px) {
-  .app-container {
     max-width: 28rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   }
 }
 
@@ -85,8 +79,233 @@ h1, h2, h3, h4, h5, h6 {
     var(--map-bg-position, center),
     0 0,
     0 0;
-  background-repeat: no-repeat, repeat, repeat;
+  background-repeat: var(--map-bg-repeat, no-repeat), repeat, repeat;
   z-index: 0;
+}
+
+/* ============ TOP BAR ============ */
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  padding: 10px 12px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+}
+
+.top-bar-menu {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: none;
+  background: #f1f5f9;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0f172a;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.top-bar-menu:hover { background: #e2e8f0; }
+
+.top-bar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.top-bar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.top-bar-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.top-bar-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.top-bar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.top-bar-status.online { background: #dcfce7; color: #15803d; }
+.top-bar-status.offline { background: #f1f5f9; color: #64748b; }
+.top-bar-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.top-bar-status.online .top-bar-status-dot {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ============ INSTALL BANNER (PWA) ============ */
+.install-banner {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 26rem;
+  z-index: 70;
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  padding: 14px 16px;
+  animation: fab-pop-in 0.25s ease-out;
+}
+
+.install-banner-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #f1f5f9;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.install-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-right: 24px;
+}
+
+.install-banner-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.install-banner-icon-ph {
+  background: #dcfce7;
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.install-banner-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+.install-banner-desc {
+  font-size: 12px;
+  color: #64748b;
+  margin: 2px 0 0;
+  line-height: 1.35;
+}
+
+.install-banner-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.install-banner-btn:hover { background: #15803d; }
+
+.install-banner-ios {
+  font-size: 12px;
+  color: #475569;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 0;
+  text-align: center;
+}
+
+/* ============ CALL VERIFICATION ============ */
+.call-verify-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #16a34a;
+  color: white;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.call-verify-number:hover { background: #15803d; }
+
+.call-verify-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.call-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #16a34a;
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .bottom-sheet {
@@ -106,10 +325,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (min-width: 768px) {
-  .bottom-sheet { max-width: 48rem; }
-}
-
-@media (min-width: 1024px) {
   .bottom-sheet { max-width: 28rem; }
 }
 
@@ -149,23 +364,24 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  padding: 4px;
-  border-radius: 9999px;
+  padding: 5px;
+  border-radius: 20px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
   max-width: calc(100% - 32px);
 }
 
 .fab-btn {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 3px;
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 9999px;
-  min-height: 32px;
+  padding: 8px 12px;
+  border-radius: 16px;
+  min-width: 60px;
   color: #475569;
   transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
@@ -184,8 +400,8 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
 }
 .fab-icon-wrap svg { width: 100%; height: 100%; }

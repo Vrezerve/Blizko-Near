@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -223,6 +223,21 @@ class SettingsUpdate(BaseModel):
     map_bg_image_url: Optional[str] = None
     map_bg_size: Optional[str] = None
     map_bg_position: Optional[str] = None
+    map_bg_repeat: Optional[str] = None
+    map_enabled: Optional[bool] = None
+    # PWA
+    pwa_enabled: Optional[bool] = None
+    pwa_short_name: Optional[str] = None
+    pwa_prompt_text: Optional[str] = None
+    pwa_icon_192_url: Optional[str] = None
+    pwa_icon_512_url: Optional[str] = None
+    # Call verification (sms.ru callcheck)
+    call_verify_enabled: Optional[bool] = None
+    call_verify_title: Optional[str] = None
+    call_verify_instruction: Optional[str] = None
+    call_verify_timeout: Optional[int] = None
+    call_verify_poll_interval: Optional[int] = None
+    call_verify_rate_limit: Optional[int] = None
     # Notification channel routing
     notification_channel: Optional[str] = None  # 'push' | 'sms' | 'both'
     sms_events: Optional[List[str]] = None      # event keys to send via SMS
@@ -849,6 +864,153 @@ async def verify_code(data: VerifyCode):
     await log_action("user_login", user["id"], {"phone": data.phone, "role": data.role, "device_id": data.device_id[:8]})
     
     return {"token": token, "user": user, "has_pin": has_pin}
+
+# ============ CALL VERIFICATION (SMS.RU CALLCHECK) ============
+
+@auth_router.post("/callcheck/start")
+async def callcheck_start(data: dict):
+    phone = data.get("phone")
+    role = data.get("role")
+    device_id = data.get("device_id")
+    if not phone or not role or not device_id:
+        raise HTTPException(status_code=400, detail="Phone, role and device_id required")
+
+    blocked = await check_device_blocked(device_id)
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"DEVICE_BLOCKED:{blocked.get('reason', 'Устройство заблокировано')}")
+
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    api_key = settings.get("sms_ru_api_key", "")
+    enabled = settings.get("call_verify_enabled", False)
+    existing_user = await db.users.find_one({"phone": phone, "role": role})
+
+    # Call verification is used ONLY for new customer registrations, when enabled
+    if not enabled or not api_key or existing_user or role != "customer":
+        return {"method": "sms"}
+
+    now = datetime.now(timezone.utc)
+    rate_limit = int(settings.get("call_verify_rate_limit") or 60)
+    last = await db.callcheck_requests.find_one({"phone": phone}, sort=[("created_at", -1)])
+    if last and last.get("created_at"):
+        elapsed = (now - datetime.fromisoformat(last["created_at"])).total_seconds()
+        if elapsed < rate_limit:
+            raise HTTPException(status_code=429, detail=f"RATE_LIMIT:{int(rate_limit - elapsed)}")
+
+    hour_ago = (now - timedelta(hours=1)).isoformat()
+    hour_count = await db.callcheck_requests.count_documents({"device_id": device_id, "created_at": {"$gte": hour_ago}})
+    if hour_count >= 5:
+        raise HTTPException(status_code=429, detail="RATE_LIMIT_HOUR")
+
+    try:
+        import requests as http_requests
+        resp = http_requests.get("https://sms.ru/callcheck/add", params={"api_id": api_key, "phone": phone.lstrip("+"), "json": 1}, timeout=10)
+        result = resp.json() if resp.content else {}
+    except Exception as e:
+        await system_log("error", "callcheck", f"Ошибка callcheck/add: {str(e)}", {"phone": phone[-4:]})
+        return {"method": "sms"}
+
+    if result.get("status") != "OK":
+        await system_log("warning", "callcheck", f"callcheck/add отклонён: {result.get('status_text', 'unknown')}", {"phone": phone[-4:]})
+        return {"method": "sms"}
+
+    timeout_sec = int(settings.get("call_verify_timeout") or 300)
+    verify_id = str(uuid.uuid4())
+    await db.callcheck_requests.insert_one({
+        "id": verify_id,
+        "check_id": result.get("check_id"),
+        "phone": phone,
+        "role": role,
+        "device_id": device_id,
+        "status": "waiting",
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(seconds=timeout_sec)).isoformat()
+    })
+    await system_log("info", "callcheck", "Верификация звонком запущена", {"phone": phone[-4:], "check_id": result.get("check_id")})
+    await log_action("callcheck_started", None, {"phone": phone, "device_id": device_id[:8]})
+
+    return {
+        "method": "call",
+        "verify_id": verify_id,
+        "call_phone": result.get("call_phone", ""),
+        "call_phone_pretty": result.get("call_phone_pretty", ""),
+        "timeout": timeout_sec,
+        "poll_interval": int(settings.get("call_verify_poll_interval") or 3),
+        "title": settings.get("call_verify_title") or "Подтвердите номер звонком",
+        "instruction": settings.get("call_verify_instruction") or "Позвоните на этот номер с вашего телефона {phone}. Звонок бесплатный. Как только звонок поступит к нам, мы автоматически подтвердим ваш номер."
+    }
+
+@auth_router.post("/callcheck/status")
+async def callcheck_status(data: dict):
+    verify_id = data.get("verify_id")
+    device_id = data.get("device_id")
+    if not verify_id:
+        raise HTTPException(status_code=400, detail="verify_id required")
+
+    rec = await db.callcheck_requests.find_one({"id": verify_id}, {"_id": 0})
+    if not rec or (device_id and rec.get("device_id") != device_id):
+        raise HTTPException(status_code=404, detail="Verification not found")
+
+    if rec.get("status") in ("confirmed", "expired"):
+        return {"status": "expired"}
+
+    now = datetime.now(timezone.utc)
+    if now > datetime.fromisoformat(rec["expires_at"]):
+        await db.callcheck_requests.update_one({"id": verify_id}, {"$set": {"status": "expired"}})
+        return {"status": "expired"}
+
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    api_key = settings.get("sms_ru_api_key", "")
+    try:
+        import requests as http_requests
+        resp = http_requests.get("https://sms.ru/callcheck/status", params={"api_id": api_key, "check_id": rec["check_id"], "json": 1}, timeout=10)
+        result = resp.json() if resp.content else {}
+    except Exception:
+        return {"status": "waiting"}
+
+    check_status = str(result.get("check_status", "400"))
+    if check_status == "402":
+        await db.callcheck_requests.update_one({"id": verify_id}, {"$set": {"status": "expired"}})
+        return {"status": "expired"}
+    if check_status != "401":
+        return {"status": "waiting"}
+
+    # Confirmed — register (or login) the customer
+    await db.callcheck_requests.update_one({"id": verify_id}, {"$set": {"status": "confirmed"}})
+    phone, role = rec["phone"], rec["role"]
+    user = await db.users.find_one({"phone": phone, "role": role})
+    if not user:
+        reg_count = await get_device_registration_count(rec["device_id"])
+        if reg_count >= 5:
+            await block_device(rec["device_id"], "Множественные регистрации с одного устройства")
+            raise HTTPException(status_code=403, detail="DEVICE_BLOCKED:Множественные регистрации с одного устройства")
+        user = {
+            "id": str(uuid.uuid4()),
+            "phone": phone,
+            "device_id": rec["device_id"],
+            "role": "customer",
+            "name": None,
+            "avatar": None,
+            "is_activated": True,
+            "total_orders": 0,
+            "cancelled_orders": 0,
+            "created_at": now.isoformat()
+        }
+        await db.users.insert_one(user)
+        await log_action("customer_registered", user["id"], {"phone": phone, "method": "callcheck"})
+        await send_admin_email(
+            "Новая регистрация пассажира",
+            f"Новый пассажир зарегистрирован (подтверждение звонком):\n\nТелефон: {phone}\nВремя: {now.isoformat()}"
+        )
+    else:
+        await db.users.update_one({"id": user["id"]}, {"$set": {"device_id": rec["device_id"]}})
+
+    token = create_access_token(user["id"], user["role"])
+    user.pop("_id", None)
+    user.pop("pin_hash", None)
+    user.pop("password_hash", None)
+    await log_action("user_login", user["id"], {"phone": phone, "role": role, "method": "callcheck"})
+    await system_log("info", "callcheck", "Номер подтверждён звонком", {"phone": phone[-4:]})
+    return {"status": "confirmed", "token": token, "user": user, "has_pin": user.get("has_pin", False)}
 
 @auth_router.post("/set-pin")
 async def set_user_pin(data: SetPin, user: dict = Depends(get_current_user)):
@@ -2255,6 +2417,14 @@ async def get_public_settings():
         "map_bg_image_url": settings.get("map_bg_image_url", ""),
         "map_bg_size": settings.get("map_bg_size", "cover"),
         "map_bg_position": settings.get("map_bg_position", "center"),
+        "map_bg_repeat": settings.get("map_bg_repeat", "no-repeat"),
+        "map_enabled": settings.get("map_enabled", True),
+        "pwa_enabled": settings.get("pwa_enabled", True),
+        "pwa_short_name": settings.get("pwa_short_name", ""),
+        "pwa_prompt_text": settings.get("pwa_prompt_text", ""),
+        "pwa_icon_192_url": settings.get("pwa_icon_192_url", ""),
+        "pwa_icon_512_url": settings.get("pwa_icon_512_url", ""),
+        "call_verify_enabled": settings.get("call_verify_enabled", False),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),
@@ -2305,6 +2475,50 @@ async def upload_app_icon(file: UploadFile = File(...), user: dict = Depends(get
     
     await log_action("app_icon_updated", user["id"], {"filename": filename})
     
+    return {"success": True, "url": icon_url}
+
+@api_router.get("/manifest.json")
+async def get_manifest():
+    """Dynamically generated PWA manifest based on admin settings"""
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    name = settings.get("app_name") or "Рядом"
+    icons = []
+    icon192 = settings.get("pwa_icon_192_url") or settings.get("app_icon_url") or ""
+    icon512 = settings.get("pwa_icon_512_url") or settings.get("app_icon_url") or ""
+    if icon192:
+        icons.append({"src": icon192, "sizes": "192x192", "type": "image/png", "purpose": "any"})
+    if icon512:
+        icons.append({"src": icon512, "sizes": "512x512", "type": "image/png", "purpose": "maskable"})
+    return {
+        "name": name,
+        "short_name": settings.get("pwa_short_name") or name,
+        "description": f"{name} — сервис заказа поездок",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#ffffff",
+        "theme_color": "#16a34a",
+        "icons": icons
+    }
+
+@settings_router.post("/upload-pwa-icon")
+async def upload_pwa_icon(size: str = Form("192"), file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload PWA manifest icon (192 or 512)"""
+    if size not in ("192", "512"):
+        raise HTTPException(status_code=400, detail="size должен быть 192 или 512")
+    if file.content_type not in ["image/png", "image/jpeg", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP")
+    if file.size and file.size > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 2 МБ")
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    filename = f"pwa_icon_{size}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(await file.read())
+    icon_url = f"/api/uploads/{filename}"
+    await db.settings.update_one({"id": "main"}, {"$set": {f"pwa_icon_{size}_url": icon_url}}, upsert=True)
+    await log_action("pwa_icon_updated", user["id"], {"filename": filename, "size": size})
     return {"success": True, "url": icon_url}
 
 @auth_router.post("/upload-avatar")

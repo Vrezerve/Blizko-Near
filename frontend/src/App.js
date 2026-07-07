@@ -17,6 +17,7 @@ import PushDebug from './pages/PushDebug';
 import ErrorBoundary from './components/ErrorBoundary';
 import OneSignalInit from './components/OneSignalInit';
 import PushOptInBanner from './components/PushOptInBanner';
+import InstallPrompt from './components/InstallPrompt';
 
 import './App.css';
 
@@ -36,6 +37,7 @@ const MapStyleLoader = () => {
       }
       root.style.setProperty('--map-bg-size', s.map_bg_size || 'cover');
       root.style.setProperty('--map-bg-position', s.map_bg_position || 'center');
+      root.style.setProperty('--map-bg-repeat', s.map_bg_repeat || 'no-repeat');
       if (s.custom_pin_url) {
         root.style.setProperty('--custom-pin-url', `url("${toAbs(s.custom_pin_url)}")`);
       }
@@ -116,6 +118,7 @@ function App() {
         <MapStyleLoader />
         <OneSignalInit />
         <PushOptInBanner />
+        <InstallPrompt />
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>

@@ -119,6 +119,18 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
+  const applyAuthResult = (newToken, userData, role, hasPin) => {
+    localStorage.setItem('taxi_token', newToken);
+    localStorage.setItem('taxi_role', role);
+    if (hasPin) {
+      localStorage.setItem('taxi_has_pin', 'true');
+      localStorage.setItem('taxi_pin_phone', userData.phone);
+      localStorage.setItem('taxi_pin_role', role);
+    }
+    setToken(newToken);
+    setUser(userData);
+  };
+
   const resetPinRequest = async (phone, role) => {
     const response = await axios.post(`${API}/auth/reset-pin-request`, {
       phone, role, device_id: deviceId
@@ -195,6 +207,7 @@ export const AuthProvider = ({ children }) => {
       deviceId,
       sendCode,
       verifyCode,
+      applyAuthResult,
       setPin,
       loginWithPin,
       checkHasPin,

@@ -9,6 +9,7 @@ import {
 import axios from 'axios';
 import YandexMap from '../components/YandexMap';
 import FabBar from '../components/FabBar';
+import TopBar from '../components/TopBar';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -786,7 +787,9 @@ const CustomerMain = () => {
   return (
     <div className="app-container" style={{ position: 'relative', overflow: 'hidden' }}>
       {/* Map Background — full screen, below UI */}
-      {settings?.yandex_map_api_key ? (
+      {settings?.map_enabled === false ? (
+        <div className="map-background" data-testid="map-disabled-bg" />
+      ) : settings?.yandex_map_api_key ? (
         <YandexMap
           apiKey={settings.yandex_map_api_key}
           userLocation={userLocation}
@@ -807,22 +810,14 @@ const CustomerMain = () => {
         />
       )}
       
-      {/* Header — floating on top */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, padding: 16, display: 'flex', justifyContent: 'space-between', pointerEvents: 'none' }}>
-        <button
-          data-testid="menu-btn"
-          onClick={() => setShowMenu(true)}
-          style={{ pointerEvents: 'auto' }}
-          className="w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center"
-        >
-          <Menu className="w-5 h-5 text-slate-700" />
-        </button>
-        
-        <div style={{ pointerEvents: 'auto' }} className="bg-white rounded-full shadow-lg px-4 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full pulse-dot" />
-          <span className="text-sm font-medium text-slate-700">{driverStats.online} онлайн</span>
-        </div>
-      </div>
+      {/* Header — white top bar */}
+      <TopBar
+        user={user}
+        onMenuClick={() => setShowMenu(true)}
+        statusOnline={driverStats.online > 0}
+        statusText={`${driverStats.online} онлайн`}
+        menuTestId="menu-btn"
+      />
 
       {/* Bottom sheet */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, pointerEvents: 'none' }}>
@@ -834,13 +829,7 @@ const CustomerMain = () => {
 
       {/* Fab bar — always visible at bottom (after auth, no overlay) */}
       {!showMenu && !showProfile && !showHistory && !showProblem && (
-        <FabBar
-          role="customer"
-          primaryLabel="Вызвать"
-          onPrimaryClick={() => {
-            setSheetCollapsed(false);
-          }}
-        />
+        <FabBar role="customer" />
       )}
 
       {/* Menu Drawer */}

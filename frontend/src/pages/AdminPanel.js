@@ -1506,6 +1506,22 @@ const AdminPanel = () => {
                 placeholder="API Key"
               />
             </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <p className="font-medium text-slate-900">Показывать карту</p>
+                <p className="text-xs text-slate-500 mt-1">Если выключено — вместо карты показывается фоновое изображение (блок «Фон карты»)</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  data-testid="settings-map-enabled"
+                  type="checkbox"
+                  checked={settings.map_enabled !== false}
+                  onChange={(e) => setSettings({...settings, map_enabled: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1559,8 +1575,8 @@ const AdminPanel = () => {
 
         {/* Map Background */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Фон карты (фолбэк)</h3>
-          <p className="text-xs text-slate-400 mb-4">Отображается когда ключ Яндекс Карт не задан</p>
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Фон карты</h3>
+          <p className="text-xs text-slate-400 mb-4">Отображается когда ключ карты не задан или карта отключена</p>
           
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1642,6 +1658,192 @@ const AdminPanel = () => {
                   <option value="bottom left">Снизу-слева</option>
                   <option value="bottom right">Снизу-справа</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Повтор фона</label>
+                <select
+                  data-testid="settings-map-bg-repeat"
+                  value={settings.map_bg_repeat || 'no-repeat'}
+                  onChange={(e) => setSettings({...settings, map_bg_repeat: e.target.value})}
+                  className="input-field"
+                >
+                  <option value="no-repeat">Без повтора</option>
+                  <option value="repeat">Повторять</option>
+                  <option value="repeat-x">По горизонтали</option>
+                  <option value="repeat-y">По вертикали</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* PWA */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">PWA — установка приложения</h3>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <p className="font-medium text-slate-900">Предлагать установку</p>
+                <p className="text-xs text-slate-500 mt-1">Пользователи увидят предложение установить приложение на телефон/ПК при каждом заходе, пока не установят</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  data-testid="settings-pwa-enabled"
+                  type="checkbox"
+                  checked={settings.pwa_enabled !== false}
+                  onChange={(e) => setSettings({...settings, pwa_enabled: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Короткое имя (на иконке)</label>
+              <input
+                type="text"
+                data-testid="settings-pwa-short-name"
+                value={settings.pwa_short_name || ''}
+                onChange={(e) => setSettings({...settings, pwa_short_name: e.target.value})}
+                className="input-field"
+                placeholder="Если пусто — используется название приложения"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Текст предложения установки</label>
+              <textarea
+                data-testid="settings-pwa-prompt-text"
+                value={settings.pwa_prompt_text || ''}
+                onChange={(e) => setSettings({...settings, pwa_prompt_text: e.target.value})}
+                className="input-field min-h-[70px]"
+                placeholder="Установите приложение на главный экран для быстрого доступа"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {['192', '512'].map((size) => (
+                <div key={size}>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Иконка {size}×{size}</label>
+                  {settings[`pwa_icon_${size}_url`] && (
+                    <div className="flex items-center gap-3 mb-2">
+                      <img
+                        src={settings[`pwa_icon_${size}_url`]?.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings[`pwa_icon_${size}_url`] : settings[`pwa_icon_${size}_url`]}
+                        alt={`icon-${size}`}
+                        className="w-12 h-12 rounded-xl object-cover border border-slate-200"
+                      />
+                      <span className="text-xs text-slate-400">Текущая</span>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-dashed border-slate-300 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
+                    <Upload className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm text-slate-600">Загрузить (PNG)</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const fd = new FormData();
+                      fd.append('file', file);
+                      fd.append('size', size);
+                      try {
+                        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/upload-pwa-icon`, {
+                          method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd
+                        });
+                        const data = await res.json();
+                        if (data.url) setSettings({...settings, [`pwa_icon_${size}_url`]: data.url});
+                      } catch(err) { alert('Ошибка загрузки'); }
+                      e.target.value = '';
+                    }} />
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Call verification */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Регистрация по звонку (SMS.ru)</h3>
+          <p className="text-xs text-slate-400 mb-4">При регистрации нового пассажира вместо SMS-кода: пользователь звонит на выданный номер, звонок бесплатный, подтверждение автоматическое. Требуется SMS.ru API Key.</p>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <p className="font-medium text-slate-900">Включить верификацию звонком</p>
+                <p className="text-xs text-slate-500 mt-1">Действует только при регистрации новых пользователей. Существующие входят как раньше.</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  data-testid="settings-call-verify-enabled"
+                  type="checkbox"
+                  checked={settings.call_verify_enabled || false}
+                  onChange={(e) => setSettings({...settings, call_verify_enabled: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Заголовок экрана</label>
+              <input
+                type="text"
+                data-testid="settings-call-verify-title"
+                value={settings.call_verify_title || ''}
+                onChange={(e) => setSettings({...settings, call_verify_title: e.target.value})}
+                className="input-field"
+                placeholder="Подтвердите номер звонком"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Текст инструкции ({'{phone}'} — номер пользователя)</label>
+              <textarea
+                data-testid="settings-call-verify-instruction"
+                value={settings.call_verify_instruction || ''}
+                onChange={(e) => setSettings({...settings, call_verify_instruction: e.target.value})}
+                className="input-field min-h-[80px]"
+                placeholder="Позвоните на этот номер с вашего телефона {phone}. Звонок бесплатный..."
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Таймер, сек</label>
+                <input
+                  type="number"
+                  data-testid="settings-call-verify-timeout"
+                  value={settings.call_verify_timeout ?? 300}
+                  onChange={(e) => setSettings({...settings, call_verify_timeout: parseInt(e.target.value) || 300})}
+                  className="input-field"
+                  min={60}
+                  max={600}
+                />
+                <p className="text-xs text-slate-400 mt-1">Время на звонок</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Опрос, сек</label>
+                <input
+                  type="number"
+                  data-testid="settings-call-verify-poll"
+                  value={settings.call_verify_poll_interval ?? 3}
+                  onChange={(e) => setSettings({...settings, call_verify_poll_interval: parseInt(e.target.value) || 3})}
+                  className="input-field"
+                  min={2}
+                  max={30}
+                />
+                <p className="text-xs text-slate-400 mt-1">Частота проверки статуса</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Лимит, сек</label>
+                <input
+                  type="number"
+                  data-testid="settings-call-verify-rate-limit"
+                  value={settings.call_verify_rate_limit ?? 60}
+                  onChange={(e) => setSettings({...settings, call_verify_rate_limit: parseInt(e.target.value) || 60})}
+                  className="input-field"
+                  min={10}
+                  max={3600}
+                />
+                <p className="text-xs text-slate-400 mt-1">Пауза между запросами</p>
               </div>
             </div>
           </div>

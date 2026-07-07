@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Phone, Loader2, Check, FileText, X } from 'lucide-react';
+import { ArrowLeft, Phone, PhoneCall, Loader2, Check, FileText, X } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 
@@ -9,11 +9,13 @@ const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const CustomerAuth = () => {
   const navigate = useNavigate();
-  const { sendCode, verifyCode, user } = useAuth();
+  const { sendCode, verifyCode, applyAuthResult, deviceId, user } = useAuth();
   
-  const [step, setStep] = useState('phone'); // phone, code, blocked
+  const [step, setStep] = useState('phone'); // phone, code, call, blocked
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
+  const [callData, setCallData] = useState(null);
+  const [callTimeLeft, setCallTimeLeft] = useState(0);
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -107,6 +109,45 @@ const CustomerAuth = () => {
     }
   };
 
+  // Poll callcheck status while on the 'call' step
+  useEffect(() => {
+    if (step !== 'call' || !callData) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const res = await axios.post(`${API}/auth/callcheck/status`, {
+          verify_id: callData.verify_id,
+          device_id: deviceId
+        });
+        if (!active) return;
+        if (res.data.status === 'confirmed') {
+          clearInterval(poll);
+          applyAuthResult(res.data.token, res.data.user, 'customer', res.data.has_pin);
+          if (!res.data.has_pin) {
+            setRedirectingToPin(true);
+            navigate('/auth/pin-setup');
+          } else {
+            navigate('/customer');
+          }
+        } else if (res.data.status === 'expired') {
+          clearInterval(poll);
+          setCallData(null);
+          setStep('phone');
+          setError('Время подтверждения истекло. Попробуйте снова.');
+        }
+      } catch (e) {
+        // keep polling
+      }
+    }, (callData.poll_interval || 3) * 1000);
+    const timer = setInterval(() => setCallTimeLeft((t) => (t > 0 ? t - 1 : 0)), 1000);
+    return () => {
+      active = false;
+      clearInterval(poll);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, callData]);
+
   const handleVerifyCode = async () => {
     if (code.length !== 4) {
       setError('Введите 4-значный код');
@@ -146,7 +187,11 @@ const CustomerAuth = () => {
         <div className="p-4">
           <button
             data-testid="back-btn"
-            onClick={() => step === 'code' ? setStep('phone') : navigate('/')}
+            onClick={() => {
+              if (step === 'code') setStep('phone');
+              else if (step === 'call') { setCallData(null); setStep('phone'); }
+              else navigate('/');
+            }}
             className="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center"
           >
             <ArrowLeft className="w-5 h-5 text-slate-700" />
@@ -169,6 +214,41 @@ const CustomerAuth = () => {
                   className="btn-secondary"
                 >
                   На главную
+                </button>
+              </div>
+            ) : step === 'call' && callData ? (
+              <div className="space-y-5 text-center" data-testid="call-verify-screen">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">{callData.title || 'Подтвердите номер звонком'}</h2>
+                  <p className="text-slate-500 text-sm">
+                    {(callData.instruction || '').replace('{phone}', phone)}
+                  </p>
+                </div>
+
+                <a
+                  href={`tel:${callData.call_phone}`}
+                  className="call-verify-number"
+                  data-testid="call-verify-number"
+                >
+                  <PhoneCall className="w-6 h-6" />
+                  {callData.call_phone_pretty || callData.call_phone}
+                </a>
+
+                <div className="call-verify-waiting" data-testid="call-verify-waiting">
+                  <span className="call-pulse" />
+                  <span>Ожидаем звонок с номера {phone}. Как только звонок поступит, мы автоматически подтвердим номер.</span>
+                </div>
+
+                <p className="text-sm text-slate-400">
+                  Осталось времени: {Math.floor(callTimeLeft / 60)}:{String(callTimeLeft % 60).padStart(2, '0')}
+                </p>
+
+                <button
+                  onClick={() => { setCallData(null); setStep('phone'); }}
+                  className="btn-secondary"
+                  data-testid="call-verify-cancel"
+                >
+                  Отмена
                 </button>
               </div>
             ) : step === 'phone' ? (
@@ -341,3 +421,4 @@ const CustomerAuth = () => {
 };
 
 export default CustomerAuth;
+
