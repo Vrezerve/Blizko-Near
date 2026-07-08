@@ -75,7 +75,30 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
 
-## Багфиксы — July 2026 (iteration 19)
+## Багфиксы — July 2026 (iteration 22)
+- [x] Backend callcheck/start больше НЕ падает silently на method:'sms' при отказе sms.ru — теперь 400 с русским сообщением («Не удалось запустить подтверждение по звонку. Проверьте, что номер...») или 502 при сетевой ошибке. Причина исходного бага: user вводил +7 (345) 345-34-53 (не мобильный) → sms.ru rejected → фронт fallback'ил на SMS-код, который никуда не отправлялся
+- [x] Frontend CustomerAuth + DriverAuth: валидация `/^\+79\d{9}$/` (RU mobile) перед запросом; при ошибке от callcheck НЕТ fallback на SMS — показывается сообщение backend'а
+- [x] DriverAuth REORDER: phone → call-verify → user фаиксируется (создаётся с name=None) → step='register' → форма ФИО/авто/номер → POST /api/auth/complete-driver-profile с bearer token → step='awaiting'
+- [x] Backend новый endpoint POST /api/auth/complete-driver-profile — driver-only, обновляет name/car_model/car_number/profile_completed=true, шлёт email админу
+- [x] DriverAuth useEffect user-redirect: не редиректит на /driver если !user.name или is_activated===false (даёт заполнить профиль / дождаться активации)
+- Тесты: /app/test_reports/iteration_22.json — 100% backend (8/8) + 100% frontend
+
+## Багфиксы — July 2026 (iteration 21)
+- [x] Слайдер на главной прижат к верху, без border-radius верхних углов, полная ширина контейнера — на всех разрешениях
+- Тесты: /app/test_reports/iteration_20.json — 100% frontend
+
+## Feature — July 2026 (iteration 20)
+- [x] Backend callcheck разрешено для role=driver (снят фильтр role!=customer), driver_data (name/car/car_number) сохраняется в callcheck_requests и применяется при create user
+- [x] Backend endpoints /api/settings/auth-slides: upload (multipart, до 5МБ, PNG/JPG/WebP/GIF), list, delete (с re-order), reorder. Slides хранятся в settings.auth_slides
+- [x] Backend GET /api/settings/public теперь возвращает auth_slides, auth_slides_autoplay, auth_slides_interval, show_fuel_stations
+- [x] Backend SettingsUpdate model — новые поля auth_slides, auth_slides_autoplay, auth_slides_interval, show_fuel_stations
+- [x] Frontend RoleSelect (/): swipe-слайдер (touch + mouse drag) с автопрокруткой (настраиваемый interval), dots-индикаторы
+- [x] Frontend AdminPanel > Настройки: секция «Слайдер на экране входа» (upload + delete + autoplay toggle + interval), секция «Заправки на карте» (toggle)
+- [x] Frontend YandexMap: prop showFuelStations — при true запрашивает OSM Overpass API amenity=fuel в bbox видимой области (debounced 800ms, кэш 3 мин по bbox, cap 200 nodes), оранжевые АЗС-placemark'и
+- [x] Frontend CSS: .bottom-sheet.with-fabbar padding-bottom 85→110px, .fab-bar bottom 8→14px — гэп между «Вызвать машину» и fab-баром ≥30px
+- Тесты: iter 20 testing agent был прерван на планировании — но backend endpoints протестированы вручную (curl OK) + smoke screenshots подтвердили работоспособность на десктопе и мобиле
+
+
 - [x] Регистрация и «Забыл PIN» — окно подтверждения по звонку SMS.ru теперь показывается корректно (backend: убран блок existing_user; фронт PinScreen: forgot-flow сначала пробует callcheck/start с purpose=pin_reset и показывает call-verify экран)
 - [x] Backend callcheck/status: при purpose='pin_reset' — очищает pin_hash и has_pin=false, выдаёт новый токен → редирект на /auth/pin-setup
 - [x] `.app-container` max-width на десктопе: 28rem → 48rem (bottom-sheet тоже 48rem)
