@@ -75,6 +75,13 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
 
+## Багфикс — July 2026 (iteration 25-26) — прямой доступ /admin
+- [x] `ProtectedRoute` в App.js теперь принимает `loginPath` prop; route `/admin` использует `loginPath='/admin/login'` — по прямой ссылке админа не выкидывает на главную, а перенаправляет на форму входа админки
+- [x] `AdminLogin.js` — если админ уже залогинен и попал на /admin/login → авто-редирект на /admin (без показа формы)
+- [x] `AdminPanel.handleLogout` теперь navigate('/admin/login', {replace:true}) — при выходе админ остаётся в admin-скоупе, не на главной
+- **Важно для боевого домена:** на nginx/ISPmanager нужно настроить SPA fallback (`try_files $uri /index.html;` в nginx или `RewriteRule ^ /index.html [L]` в .htaccess), чтобы прямые URL /admin, /auth/customer и т.д. не возвращали 404
+- Тесты: /app/test_reports/iteration_25.json + iteration_26.json — 100% (13/13)
+
 ## Оптимизация — July 2026 (iteration 24) — Safari + perf
 - [x] Safari compat: .app-container min-height cascade (100vh → -webkit-fill-available → 100dvh), .auth-slider aspect-ratio + @supports not fallback (padding-bottom 42.857%)
 - [x] Preconnect: fonts.googleapis.com, fonts.gstatic.com, cdn.onesignal.com. DNS-prefetch: api-maps.yandex.ru, sms.ru
