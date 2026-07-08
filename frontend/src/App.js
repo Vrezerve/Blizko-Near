@@ -57,7 +57,7 @@ const MapStyleLoader = () => {
   return null;
 };
 
-const ProtectedRoute = ({ children, allowedRoles }) => {
+const ProtectedRoute = ({ children, allowedRoles, loginPath = '/' }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -69,11 +69,11 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={loginPath} replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={loginPath} replace />;
   }
 
   return children;
@@ -111,7 +111,7 @@ function AppRoutes() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute allowedRoles={['admin']}>
+          <ProtectedRoute allowedRoles={['admin']} loginPath="/admin/login">
             <AdminPanel />
           </ProtectedRoute>
         }

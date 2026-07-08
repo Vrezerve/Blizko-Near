@@ -8,13 +8,20 @@ const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
-  const { adminLogin } = useAuth();
+  const { adminLogin, user, loading: authLoading } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [testMode, setTestMode] = useState(null);
+
+  // If already logged in as admin — go straight to panel
+  useEffect(() => {
+    if (!authLoading && user && user.role === 'admin') {
+      navigate('/admin', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   useEffect(() => {
     axios.get(`${API}/settings/public`).then(r => setTestMode(r.data.test_mode !== false)).catch(() => {});
