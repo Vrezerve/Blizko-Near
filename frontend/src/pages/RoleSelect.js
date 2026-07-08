@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Car, User, Shield, ChevronRight, Loader2 } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
+import { fetchPublicSettings } from '../lib/settingsCache';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -98,15 +99,7 @@ const RoleSelect = () => {
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const response = await axios.get(`${API}/settings/public`);
-        setSettings(response.data);
-      } catch (error) {
-        console.error('Failed to fetch settings');
-      }
-    };
-    fetchSettings();
+    fetchPublicSettings().then(setSettings).catch(() => {});
   }, []);
 
   useEffect(() => {

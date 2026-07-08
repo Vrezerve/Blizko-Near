@@ -1,27 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
-import axios from 'axios';
+import { fetchPublicSettings } from '../lib/settingsCache';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api';
-
-let cachedSettings = null;
+let cachedBranding = null;
 
 export const useAppBranding = () => {
-  const [branding, setBranding] = useState(cachedSettings || { app_name: 'Рядом', app_icon_url: '' });
+  const [branding, setBranding] = useState(cachedBranding || { app_name: 'Рядом', app_icon_url: '' });
 
   useEffect(() => {
-    if (cachedSettings) return;
-    const fetchBranding = async () => {
-      try {
-        const res = await axios.get(`${API}/settings/public`);
-        const data = { app_name: res.data.app_name || 'Рядом', app_icon_url: res.data.app_icon_url || '' };
-        cachedSettings = data;
-        setBranding(data);
-      } catch {
-        // use defaults
-      }
-    };
-    fetchBranding();
+    if (cachedBranding) return;
+    fetchPublicSettings().then((s) => {
+      const data = { app_name: s.app_name || 'Рядом', app_icon_url: s.app_icon_url || '' };
+      cachedBranding = data;
+      setBranding(data);
+    }).catch(() => {});
   }, []);
 
   return branding;

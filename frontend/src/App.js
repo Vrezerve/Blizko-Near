@@ -1,31 +1,42 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'sonner';
 import axios from 'axios';
+import { fetchPublicSettings } from './lib/settingsCache';
 
 import RoleSelect from './pages/RoleSelect';
 import CustomerAuth from './pages/CustomerAuth';
 import DriverAuth from './pages/DriverAuth';
-import CustomerMain from './pages/CustomerMain';
-import DriverMain from './pages/DriverMain';
-import AdminLogin from './pages/AdminLogin';
-import AdminPanel from './pages/AdminPanel';
 import PinScreen from './pages/PinScreen';
 import PinSetup from './pages/PinSetup';
-import PushDebug from './pages/PushDebug';
 import ErrorBoundary from './components/ErrorBoundary';
 import OneSignalInit from './components/OneSignalInit';
 import PushOptInBanner from './components/PushOptInBanner';
 import InstallPrompt from './components/InstallPrompt';
 
+// Heavy screens — split into separate chunks to speed up first paint
+const CustomerMain = lazy(() => import('./pages/CustomerMain'));
+const DriverMain = lazy(() => import('./pages/DriverMain'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const PushDebug = lazy(() => import('./pages/PushDebug'));
+
 import './App.css';
+
+const PageFallback = () => (
+  <div className="app-container flex items-center justify-center">
+    <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
+
+// Set a sane global timeout so slow backend doesn't freeze the app
+axios.defaults.timeout = 15000;
 
 // Load map CSS vars from settings
 const MapStyleLoader = () => {
   useEffect(() => {
-    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/settings/public`).then(res => {
-      const s = res.data;
+    fetchPublicSettings().then(s => {
       const root = document.documentElement;
       const toAbs = (u) => (u && u.startsWith('/')) ? `${process.env.REACT_APP_BACKEND_URL}${u}` : u;
       if (s.map_bg_color) root.style.setProperty('--map-bg-color', s.map_bg_color);
@@ -120,7 +131,9 @@ function App() {
         <PushOptInBanner />
         <InstallPrompt />
         <ErrorBoundary>
-          <AppRoutes />
+          <Suspense fallback={<PageFallback />}>
+            <AppRoutes />
+          </Suspense>
         </ErrorBoundary>
         <Toaster position="top-center" richColors />
       </BrowserRouter>

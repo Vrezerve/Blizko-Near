@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Phone, PhoneCall, Loader2, Check, Car, User, X, Clock, Ban } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
+import { fetchPublicSettings } from '../lib/settingsCache';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -40,15 +41,7 @@ const DriverAuth = () => {
   }, [user, navigate, redirectingToPin]);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const response = await axios.get(`${API}/settings/public`);
-        setSettings(response.data);
-      } catch (error) {
-        console.error('Failed to fetch settings');
-      }
-    };
-    fetchSettings();
+    fetchPublicSettings().then(setSettings).catch(() => {});
   }, []);
 
   const formatPhone = (value) => {

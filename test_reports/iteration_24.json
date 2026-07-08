@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 24 (Safari compat + load optimization) verified. All acceptance criteria pass functionally. Landing (/) DOM ready in 0.34s, RoleSelect visible at 0.51s on desktop network (target <3s). preconnect links present for fonts.googleapis.com, fonts.gstatic.com, cdn.onesignal.com; dns-prefetch present for api-maps.yandex.ru and sms.ru. .app-container computed min-height=800px equals viewport height (Safari 3-tier fallback 100vh/-webkit-fill-available/100dvh — last valid rule wins). .auth-slider renders at 375x160.7px with aspect-ratio: 21/9 computed correctly (Safari <15 padding-bottom fallback exists under @supports not (aspect-ratio)). Only 3 JS chunks load on landing route (small footprint). admin-login-link hidden when test_mode=false. Lazy chunks confirmed for AdminLogin + AdminPanel (email/password rendered, admin@taxi.local/admin123 login → dashboard sidebar/topbar rendered). CustomerAuth + DriverAuth are NOT lazy in App.js (imports at top-level lines 9-10) — this differs from PRD wording but is by design (lightweight enough). Regression: /auth/customer with valid +79XXXXXXXXX after 2 consent checkboxes → call-verify-screen (data-testid confirmed). /auth/driver with valid phone → driver-call-verify-screen (screen shows 8-800-777-9999 and 4:54 timer). 0 console errors. MINOR: React app fires 2 XHR requests to /api/settings/public on initial / load (target was 1) — settingsCache dedup works but 2 concurrent groups still slip through (likely one MapStyleLoader/RoleSelect batch resolves, then another component like InstallPrompt/AppLogo runs its effect a tick later before cache is populated). OneSignal fetch is separate (1 request, expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "settingsCache dedup on initial /", "issue": "Observed 2 XHR requests to /api/settings/public within 2s of page load instead of 1. Big improvement over pre-iter24 (~4-5 requests) but dedup not 100%. Likely race between the very first fetchPublicSettings() call resolving and a subsequent late-mounting component (InstallPrompt is a candidate — its useEffect has an early-return path via isStandalone/sessionStorage that runs synchronously but the fetch itself is unconditional after those guards). Not a regression, minor perf.", "affected_selectors": []}
+    ],
+    "design_issues": [
+      {"screen": "RoleSelect (/) and /auth/customer background", "issues": ["Pre-existing (iter 20+): .map-background paints solid red when the external map tile image URL is unreachable in preview env — cosmetic, not iter 24 related."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OPTIONAL (minor): trace source of the 2nd /api/settings/public XHR on landing (likely InstallPrompt or AppLogo effect firing after cache resolves) — could gain the final request reduction to 1. Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "App.js L19-23: lazy() for CustomerMain/DriverMain/AdminLogin/AdminPanel/PushDebug ✓ — CustomerAuth and DriverAuth intentionally not lazy (would add Suspense fallback flicker on the primary auth entry flow, tradeoff acceptable given they are small).",
+    "settingsCache.js: inflight-promise + 60s TTL correct pattern. Race window: caller A calls -> inflight set -> A resolves -> inflight=null, cached=data. Caller B calls at t=inflight_resolve+ε: reads `if (cached && now - cachedAt < TTL)` -> returns cached. But if useEffect ordering yields multiple mount-time calls before first XHR completes, they should share inflight — so 2 XHR observed suggests InstallPrompt/AppLogo/AuthContext might import axios directly OR a component mounts late (e.g., after auth state resolution). Recommend adding a console.count in settingsCache.js to diagnose in dev.",
+    "index.html L27: OneSignal fetch uses cache: 'no-store' — cannot share with axios cache (different Request objects, different browser cache entries). This is expected and correct (isolation).",
+    "index.css L53-55: 3-line min-height cascade for Safari fallback is correct — last valid declaration wins, older Safari without 100dvh support keeps -webkit-fill-available, ancient Safari without that keeps 100vh.",
+    "index.css L191-200: @supports not (aspect-ratio) fallback is syntactically correct — padding-bottom: 42.857% (=9/21) with position:absolute inset:0 on child produces same 21:9 box.",
+    "No new dependencies added; no supervisor changes needed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested per request)", "frontend": "~93% (13/14 assertions pass; the request-count-of-1 target missed by 1)"},
+  "test_credentials": "admin@taxi.local/admin123 (verified); random +79XXXXXXXXX used for customer/driver flows to avoid 60s rate limit",
+  "seed_data_creation": "None. No mutations to backend state.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iter 24 is a perf + Safari compat pass. If retesting: (1) always target REACT_APP_BACKEND_URL from frontend/.env; (2) phone inputs on CustomerAuth and DriverAuth use formatPhone controlled state — use page.keyboard.type() not fill() to trigger onChange handlers; (3) testids are 'phone-input' (customer) and 'driver-phone-input' (driver) — NOT 'customer-phone-input'; (4) customer submit is 'send-code-btn', driver submit is 'driver-check-phone-btn'; (5) landing viewport 375x800 is fine but form fields sit below the fold, use scrollIntoView before clicking; (6) admin panel top-level testid to look for after login is a sidebar/topbar 'Обзор' heading (page loaded → verified visible screenshot).",
+  "rca of the issue": "N/A functional regressions. For the 2-XHR minor: settingsCache inflight-promise dedup is correct but only prevents concurrent requests. If any component's useEffect runs after the first request resolves but a component that mounted alongside had already dispatched a separate axios.get before the shared promise was registered (impossible with current code) OR if React's concurrent renderer re-schedules effects across ticks such that the 2nd component's effect fires after 1st promise resolves but before cache is populated — race window is theoretically zero because `inflight = axios.get()` and `cached=..., inflight=null` happen in same microtask on `.then`. Practically: most likely InstallPrompt's useEffect fires later because it depends on window.addEventListener callback registration ordering, or Router-triggered remount after auth state loads triggers a fresh fetchPublicSettings before the previous cache write is visible. Not a blocker."
+}

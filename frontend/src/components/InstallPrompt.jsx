@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { X, Download, Share } from 'lucide-react';
+import { fetchPublicSettings } from '../lib/settingsCache';
 
 const isStandalone = () =>
   window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
@@ -21,10 +21,10 @@ const InstallPrompt = () => {
     };
     window.addEventListener('beforeinstallprompt', handler);
 
-    axios.get(`${process.env.REACT_APP_BACKEND_URL}/api/settings/public`)
-      .then((res) => {
-        if (res.data.pwa_enabled === false) return;
-        setSettings(res.data);
+    fetchPublicSettings()
+      .then((s) => {
+        if (s.pwa_enabled === false) return;
+        setSettings(s);
         if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream) {
           setIosMode(true);
         }

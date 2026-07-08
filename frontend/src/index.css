@@ -50,7 +50,9 @@ h1, h2, h3, h4, h5, h6 {
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
-  min-height: 100dvh;
+  min-height: 100vh;                       /* iOS Safari <15.4 fallback */
+  min-height: -webkit-fill-available;      /* iOS Safari legacy fallback */
+  min-height: 100dvh;                      /* modern browsers (last wins) */
   position: relative;
   overflow: hidden;
   background-color: #f8fafc;
@@ -183,6 +185,18 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 0;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* Safari <15 fallback (no aspect-ratio support) */
+@supports not (aspect-ratio: 1 / 1) {
+  .auth-slider {
+    height: 0;
+    padding-bottom: 42.857%;   /* 9/21 = 42.857% */
+  }
+  .auth-slider .auth-slider-track {
+    position: absolute;
+    inset: 0;
+  }
 }
 
 .auth-slider-track {
