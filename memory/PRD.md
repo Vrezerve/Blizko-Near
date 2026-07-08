@@ -75,6 +75,14 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
 
+## Оптимизация — July 2026 (iteration 24) — Safari + perf
+- [x] Safari compat: .app-container min-height cascade (100vh → -webkit-fill-available → 100dvh), .auth-slider aspect-ratio + @supports not fallback (padding-bottom 42.857%)
+- [x] Preconnect: fonts.googleapis.com, fonts.gstatic.com, cdn.onesignal.com. DNS-prefetch: api-maps.yandex.ru, sms.ru
+- [x] Code splitting: CustomerMain, DriverMain, AdminLogin, AdminPanel (3300 строк!), PushDebug — React.lazy + Suspense. Landing bundle сильно уменьшен
+- [x] Shared cache /api/settings/public — новый /app/frontend/src/lib/settingsCache.js с inflight promise dedup и 60сек TTL. Было 4-5 запросов, стало 2 (React dedup + 1 из OneSignal-в-html)
+- [x] axios.defaults.timeout = 15000 — глобальный таймаут против висящих запросов
+- Тесты: /app/test_reports/iteration_24.json — Landing visible 0.51s, ~93% frontend targets pass, 0 console errors
+
 ## Изменения — July 2026 (iteration 23) — production polish
 - [x] Слайдер на главной: aspect-ratio 16/9 → 21/9 (высота 210→161px на 375, -24%)
 - [x] Кнопка «Вход для администратора» на / рендерится только при `settings.test_mode === true`. В продакшне (test_mode=false) — скрыта
