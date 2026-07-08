@@ -75,6 +75,12 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
 
+## Изменения — July 2026 (iteration 23) — production polish
+- [x] Слайдер на главной: aspect-ratio 16/9 → 21/9 (высота 210→161px на 375, -24%)
+- [x] Кнопка «Вход для администратора» на / рендерится только при `settings.test_mode === true`. В продакшне (test_mode=false) — скрыта
+- Regression: /auth/customer, /auth/driver call-verify, /auth/pin forgot — всё работает
+- Тесты: /app/test_reports/iteration_23.json — 100% backend + 100% frontend (13/13 pytest)
+
 ## Багфиксы — July 2026 (iteration 22)
 - [x] Backend callcheck/start больше НЕ падает silently на method:'sms' при отказе sms.ru — теперь 400 с русским сообщением («Не удалось запустить подтверждение по звонку. Проверьте, что номер...») или 502 при сетевой ошибке. Причина исходного бага: user вводил +7 (345) 345-34-53 (не мобильный) → sms.ru rejected → фронт fallback'ил на SMS-код, который никуда не отправлялся
 - [x] Frontend CustomerAuth + DriverAuth: валидация `/^\+79\d{9}$/` (RU mobile) перед запросом; при ошибке от callcheck НЕТ fallback на SMS — показывается сообщение backend'а
