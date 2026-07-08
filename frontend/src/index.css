@@ -176,7 +176,7 @@ h1, h2, h3, h4, h5, h6 {
 .auth-slider {
   position: relative;
   width: calc(100% + 3rem);
-  margin: -1rem -1.5rem 1.25rem;
+  margin: -1.5rem -1.5rem 1.5rem;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   background: #0f172a;
@@ -229,14 +229,6 @@ h1, h2, h3, h4, h5, h6 {
 .auth-slider-dot.active {
   background: #ffffff;
   transform: scale(1.25);
-}
-
-@media (min-width: 768px) {
-  .auth-slider {
-    border-radius: 20px;
-    margin: 0 0 1.5rem;
-    width: 100%;
-  }
 }
 
 /* ============ INSTALL BANNER (PWA) ============ */
