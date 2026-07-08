@@ -75,6 +75,17 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Push-баннер сдвинут ниже TopBar (top: 68px)
 - Тесты: /app/test_reports/iteration_17.json — 100% backend (10/10) + 100% frontend
 
+## Багфиксы — July 2026 (iteration 19)
+- [x] Регистрация и «Забыл PIN» — окно подтверждения по звонку SMS.ru теперь показывается корректно (backend: убран блок existing_user; фронт PinScreen: forgot-flow сначала пробует callcheck/start с purpose=pin_reset и показывает call-verify экран)
+- [x] Backend callcheck/status: при purpose='pin_reset' — очищает pin_hash и has_pin=false, выдаёт новый токен → редирект на /auth/pin-setup
+- [x] `.app-container` max-width на десктопе: 28rem → 48rem (bottom-sheet тоже 48rem)
+- [x] Админка: `.admin-container` max-width 80rem → 96rem, паддинги адаптивны
+- [x] Админка: мобильная адаптация — admin-topbar (бургер + название таба + logout), sidebar-drawer <1024px с бэкдропом, таблицы обёрнуты в admin-table-wrap с overflow-x
+- [x] DELETE /api/admin/users/{user_id} — полное удаление пассажира/водителя с каскадом (заказы клиента + notifications + verification_codes + callcheck_requests; для водителя driver_id обнуляется в его заказах)
+- [x] UI: кнопка «Удалить» в модалке редактирования пользователя + модалка подтверждения (delete-user-modal с cancel/confirm testids)
+- [x] Защита: нельзя удалить admin (403), 404 при несуществующем пользователе
+- Тесты: /app/test_reports/iteration_19.json — 100% frontend (5/5) + 90% backend (9/10, 1 skip — не баг)
+
 ## Багфиксы — June 2026 (iteration 18)
 - [x] Восстановлен вызов callcheck/start в CustomerAuth (регистрация показывала SMS-экран вместо звонка)
 - [x] Новый экран звонка по ТЗ: «Подтверждение номера телефона», номер, 4 блока цифр (подставляются при подтверждении), таймер «Осталось времени», кнопка «Позвонить» (tel:, Android/iOS), «Отмена»
