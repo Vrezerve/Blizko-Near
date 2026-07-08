@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Car, User, Shield, ChevronRight, Loader2 } from 'lucide-react';
@@ -6,6 +6,91 @@ import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
+
+const AuthSlider = ({ slides, autoplay = true, interval = 5 }) => {
+  const [index, setIndex] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startXRef = useRef(0);
+  const containerRef = useRef(null);
+
+  const total = slides.length;
+  const goTo = useCallback((i) => setIndex(((i % total) + total) % total), [total]);
+
+  useEffect(() => {
+    if (!autoplay || total <= 1 || dragging) return;
+    const t = setInterval(() => setIndex((i) => (i + 1) % total), Math.max(1, interval) * 1000);
+    return () => clearInterval(t);
+  }, [autoplay, interval, total, dragging]);
+
+  if (total === 0) return null;
+
+  const width = containerRef.current?.offsetWidth || 320;
+
+  const onStart = (clientX) => {
+    startXRef.current = clientX;
+    setDragging(true);
+  };
+  const onMove = (clientX) => {
+    if (!dragging) return;
+    setDragOffset(clientX - startXRef.current);
+  };
+  const onEnd = () => {
+    if (!dragging) return;
+    const threshold = Math.min(80, width * 0.2);
+    if (dragOffset > threshold) goTo(index - 1);
+    else if (dragOffset < -threshold) goTo(index + 1);
+    setDragOffset(0);
+    setDragging(false);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="auth-slider"
+      data-testid="auth-slider"
+      onTouchStart={(e) => onStart(e.touches[0].clientX)}
+      onTouchMove={(e) => onMove(e.touches[0].clientX)}
+      onTouchEnd={onEnd}
+      onMouseDown={(e) => onStart(e.clientX)}
+      onMouseMove={(e) => dragging && onMove(e.clientX)}
+      onMouseUp={onEnd}
+      onMouseLeave={onEnd}
+    >
+      <div
+        className="auth-slider-track"
+        style={{
+          transform: `translateX(calc(${-index * 100}% + ${dragOffset}px))`,
+          transition: dragging ? 'none' : 'transform 0.35s ease-out'
+        }}
+      >
+        {slides.map((s) => (
+          <div key={s.id} className="auth-slide">
+            <img
+              src={s.url.startsWith('http') ? s.url : `${process.env.REACT_APP_BACKEND_URL}${s.url}`}
+              alt=""
+              draggable={false}
+              loading="lazy"
+            />
+          </div>
+        ))}
+      </div>
+      {total > 1 && (
+        <div className="auth-slider-dots" data-testid="auth-slider-dots">
+          {slides.map((s, i) => (
+            <button
+              key={s.id}
+              onClick={() => goTo(i)}
+              className={`auth-slider-dot ${i === index ? 'active' : ''}`}
+              aria-label={`Слайд ${i + 1}`}
+              data-testid={`auth-slider-dot-${i}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const RoleSelect = () => {
   const navigate = useNavigate();
@@ -74,6 +159,14 @@ const RoleSelect = () => {
       <div className="map-background" />
       
       <div className="relative z-10 flex flex-col min-h-[100dvh] p-6">
+        {settings?.auth_slides?.length > 0 && (
+          <AuthSlider
+            slides={settings.auth_slides}
+            autoplay={settings.auth_slides_autoplay !== false}
+            interval={settings.auth_slides_interval || 5}
+          />
+        )}
+
         <div className="flex-1 flex flex-col items-center justify-center">
           <AppLogo size="lg" className="mb-6" />
           

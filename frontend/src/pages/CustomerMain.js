@@ -799,6 +799,7 @@ const CustomerMain = () => {
           etaMinutes={currentOrder?.eta_minutes || etaMinutes}
           onMapClick={handleMapClick}
           customPinUrl={settings?.custom_pin_url ? (settings.custom_pin_url.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings.custom_pin_url : settings.custom_pin_url) : ''}
+          showFuelStations={settings?.show_fuel_stations || false}
         />
       ) : (
         <TrackingMap 

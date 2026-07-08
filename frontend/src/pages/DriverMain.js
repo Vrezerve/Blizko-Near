@@ -582,6 +582,7 @@ const DriverMain = () => {
           userLocation={userLocation}
           showUserPin={true}
           customPinUrl={settings?.custom_pin_url ? (settings.custom_pin_url.startsWith('/') ? process.env.REACT_APP_BACKEND_URL + settings.custom_pin_url : settings.custom_pin_url) : ''}
+          showFuelStations={settings?.show_fuel_stations || false}
         />
       ) : (
         <DriverMap userLocation={userLocation} />

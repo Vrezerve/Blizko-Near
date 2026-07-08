@@ -10,7 +10,8 @@ const YandexMap = ({
   onMapClick,
   showUserPin = true,
   markers = [],
-  customPinUrl
+  customPinUrl,
+  showFuelStations = false
 }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -18,6 +19,8 @@ const YandexMap = ({
   const driverPlacemarkRef = useRef(null);
   const pickPlacemarkRef = useRef(null);
   const clusterRef = useRef(null);
+  const fuelLayerRef = useRef(null);
+  const fuelCacheRef = useRef({ bbox: null, ts: 0 });
   const [mapReady, setMapReady] = useState(false);
   const [ymapsLoaded, setYmapsLoaded] = useState(false);
 
@@ -160,6 +163,74 @@ const YandexMap = ({
     clusterRef.current = cl;
     return () => { if (clusterRef.current && mapInstanceRef.current) { mapInstanceRef.current.geoObjects.remove(clusterRef.current); clusterRef.current = null; } };
   }, [mapReady, markers]);
+
+  // Fuel stations layer via Overpass API (OSM)
+  useEffect(() => {
+    if (!mapReady || !window.ymaps) return;
+    const ymaps = window.ymaps;
+    const map = mapInstanceRef.current;
+    if (!showFuelStations) {
+      if (fuelLayerRef.current) {
+        try { map.geoObjects.remove(fuelLayerRef.current); } catch (e) {}
+        fuelLayerRef.current = null;
+      }
+      return;
+    }
+    const loadFuel = async () => {
+      try {
+        const b = map.getBounds();
+        if (!b) return;
+        const [sw, ne] = b;
+        const south = sw[0], west = sw[1], north = ne[0], east = ne[1];
+        // don't refetch if bbox unchanged & fresh (<3 min)
+        const key = `${south.toFixed(2)},${west.toFixed(2)},${north.toFixed(2)},${east.toFixed(2)}`;
+        const now = Date.now();
+        if (fuelCacheRef.current.bbox === key && now - fuelCacheRef.current.ts < 180000) return;
+        // limit bbox area to avoid huge queries
+        if ((north - south) * (east - west) > 0.4) return;
+        const q = `[out:json][timeout:15];node["amenity"="fuel"](${south},${west},${north},${east});out 200;`;
+        const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q);
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        fuelCacheRef.current = { bbox: key, ts: now };
+        const nodes = (data.elements || []).filter(n => n.lat && n.lon).slice(0, 200);
+        if (fuelLayerRef.current) {
+          try { map.geoObjects.remove(fuelLayerRef.current); } catch (e) {}
+        }
+        const cl = new ymaps.Clusterer({ preset: 'islands#redClusterIcons', gridSize: 64 });
+        const fuelIcon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="26" height="30" viewBox="0 0 26 30"><path d="M13 0C7.5 0 3 4.5 3 10c0 8 10 20 10 20s10-12 10-20c0-5.5-4.5-10-10-10z" fill="#f97316" stroke="#fff" stroke-width="1.5"/><text x="13" y="14" text-anchor="middle" fill="#fff" font-family="Arial" font-size="10" font-weight="bold">АЗС</text></svg>');
+        const pms = nodes.map(n => {
+          const brand = n.tags?.brand || n.tags?.name || 'АЗС';
+          const op = n.tags?.operator || '';
+          return new ymaps.Placemark([n.lat, n.lon], {
+            hintContent: brand,
+            balloonContent: `<b>${brand}</b>${op ? '<br/>' + op : ''}`
+          }, { iconLayout: 'default#image', iconImageHref: fuelIcon, iconImageSize: [26, 30], iconImageOffset: [-13, -30] });
+        });
+        cl.add(pms);
+        map.geoObjects.add(cl);
+        fuelLayerRef.current = cl;
+      } catch (e) {
+        // Silent failure — Overpass sometimes rate-limits
+      }
+    };
+    loadFuel();
+    let debounce = null;
+    const onBoundsChange = () => {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(loadFuel, 800);
+    };
+    map.events.add('boundschange', onBoundsChange);
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      try { map.events.remove('boundschange', onBoundsChange); } catch (e) {}
+      if (fuelLayerRef.current) {
+        try { map.geoObjects.remove(fuelLayerRef.current); } catch (e) {}
+        fuelLayerRef.current = null;
+      }
+    };
+  }, [mapReady, showFuelStations]);
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>

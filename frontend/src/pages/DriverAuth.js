@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Phone, Loader2, Check, Car, User, X, Clock, Ban } from 'lucide-react';
+import { ArrowLeft, Phone, PhoneCall, Loader2, Check, Car, User, X, Clock, Ban } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 
@@ -9,9 +9,9 @@ const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const DriverAuth = () => {
   const navigate = useNavigate();
-  const { sendCode, verifyCode, registerDriver, checkDriverStatus, user } = useAuth();
+  const { sendCode, verifyCode, registerDriver, checkDriverStatus, applyAuthResult, deviceId, user } = useAuth();
   
-  const [step, setStep] = useState('phone'); // phone, code, register, awaiting, blocked
+  const [step, setStep] = useState('phone'); // phone, code, register, call, awaiting, blocked
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -25,6 +25,9 @@ const DriverAuth = () => {
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [settings, setSettings] = useState(null);
   const [redirectingToPin, setRedirectingToPin] = useState(false);
+  const [callData, setCallData] = useState(null);
+  const [callTimeLeft, setCallTimeLeft] = useState(0);
+  const [callConfirmed, setCallConfirmed] = useState(false);
 
   useEffect(() => {
     if (redirectingToPin) return;
@@ -95,8 +98,31 @@ const DriverAuth = () => {
             navigate('/auth/pin');
             return;
           }
-        } catch (e) {}
-        // No PIN - send SMS code
+        } catch (e) { /* pin check failed — proceed */ }
+        // No PIN - try call verification (fallback to SMS)
+        try {
+          const res = await axios.post(`${API}/auth/callcheck/start`, {
+            phone: cleanPhone,
+            role: 'driver',
+            device_id: deviceId
+          });
+          if (res.data.method === 'call') {
+            setCallData(res.data);
+            setCallTimeLeft(res.data.timeout || 300);
+            setCallConfirmed(false);
+            setStep('call');
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          const detail = err.response?.data?.detail || '';
+          if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
+            setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
+            setLoading(false);
+            return;
+          }
+        }
+        // Fallback to SMS
         await sendCode(cleanPhone, 'driver');
         setStep('code');
       }
@@ -127,15 +153,50 @@ const DriverAuth = () => {
     setLoading(true);
     setError('');
 
+    const cleanPhone = getCleanPhone();
+    const driverData = {
+      name: name.trim(),
+      car_model: carModel.trim(),
+      car_number: carNumber.trim().toUpperCase(),
+      agreed_terms: true,
+      agreed_privacy: true
+    };
+
+    // Try call verification first (creates driver only on confirm)
     try {
-      await registerDriver({
-        phone: getCleanPhone(),
-        name: name.trim(),
-        car_model: carModel.trim(),
-        car_number: carNumber.trim().toUpperCase(),
-        agreed_terms: true,
-        agreed_privacy: true
+      const res = await axios.post(`${API}/auth/callcheck/start`, {
+        phone: cleanPhone,
+        role: 'driver',
+        device_id: deviceId,
+        driver_data: driverData
       });
+      if (res.data.method === 'call') {
+        setCallData(res.data);
+        setCallTimeLeft(res.data.timeout || 300);
+        setCallConfirmed(false);
+        setStep('call');
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail || '';
+      if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
+        setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
+        setLoading(false);
+        return;
+      }
+      if (typeof detail === 'string' && detail.startsWith('DEVICE_BLOCKED:')) {
+        setError(detail.replace('DEVICE_BLOCKED:', ''));
+        setStep('blocked');
+        setLoading(false);
+        return;
+      }
+      // fallback to legacy SMS-based registration
+    }
+
+    // Fallback: legacy direct registration + SMS
+    try {
+      await registerDriver({ phone: cleanPhone, ...driverData });
       setStep('awaiting');
     } catch (error) {
       const detail = error.response?.data?.detail || 'Ошибка регистрации';
@@ -149,6 +210,49 @@ const DriverAuth = () => {
       setLoading(false);
     }
   };
+
+  // Poll callcheck status while on 'call' step
+  useEffect(() => {
+    if (step !== 'call' || !callData) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const res = await axios.post(`${API}/auth/callcheck/status`, {
+          verify_id: callData.verify_id,
+          device_id: deviceId
+        });
+        if (!active) return;
+        if (res.data.status === 'confirmed') {
+          clearInterval(poll);
+          setCallConfirmed(true);
+          const confirmedUser = res.data.user;
+          if (confirmedUser && confirmedUser.is_activated === false) {
+            // New driver — wait for admin activation
+            setTimeout(() => setStep('awaiting'), 1500);
+          } else {
+            setRedirectingToPin(true);
+            applyAuthResult(res.data.token, confirmedUser, 'driver', res.data.has_pin);
+            setTimeout(() => {
+              if (!res.data.has_pin) navigate('/auth/pin-setup');
+              else navigate('/driver');
+            }, 1500);
+          }
+        } else if (res.data.status === 'expired') {
+          clearInterval(poll);
+          setCallData(null);
+          setStep('phone');
+          setError('Время подтверждения истекло. Попробуйте снова.');
+        }
+      } catch (e) { /* keep polling */ }
+    }, (callData.poll_interval || 3) * 1000);
+    const timer = setInterval(() => setCallTimeLeft((t) => (t > 0 ? t - 1 : 0)), 1000);
+    return () => {
+      active = false;
+      clearInterval(poll);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, callData]);
 
   const handleVerifyCode = async () => {
     if (code.length !== 4) {
@@ -361,6 +465,66 @@ const DriverAuth = () => {
           </div>
         );
 
+      case 'call':
+        if (!callData) return null;
+        return (
+          <div className="space-y-5 text-center" data-testid="driver-call-verify-screen">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{callData.title || 'Подтверждение номера телефона'}</h2>
+              <p className="text-slate-500 text-sm">
+                {(callData.instruction || 'Вам необходимо позвонить по номеру ниже для подтверждения. Звонок бесплатный.').replace('{phone}', phone)}
+              </p>
+            </div>
+
+            <div className="call-verify-phone-box" data-testid="driver-call-verify-number">
+              {callData.call_phone_pretty || callData.call_phone}
+            </div>
+
+            <div className="call-digit-row">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className={`call-digit-box ${callConfirmed ? 'filled' : ''}`}>
+                  {callConfirmed ? getCleanPhone().slice(-4)[i] : ''}
+                </div>
+              ))}
+            </div>
+
+            {callConfirmed ? (
+              <div className="call-verify-success">
+                <Check className="w-5 h-5" />
+                Номер подтверждён!
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-slate-500 flex items-center justify-center gap-1.5">
+                  <Clock className="w-4 h-4" />
+                  Осталось времени: {Math.floor(callTimeLeft / 60)}:{String(callTimeLeft % 60).padStart(2, '0')}
+                </p>
+
+                <div className="call-verify-waiting">
+                  <span className="call-pulse" />
+                  <span>Ожидаем звонок с номера {phone}. После звонка подтверждение произойдёт автоматически.</span>
+                </div>
+
+                <a
+                  href={`tel:+${(callData.call_phone || '').replace(/\D/g, '')}`}
+                  className="btn-primary !no-underline flex items-center justify-center gap-2"
+                  data-testid="driver-call-btn"
+                >
+                  <PhoneCall className="w-5 h-5" />
+                  Позвонить
+                </a>
+
+                <button
+                  onClick={() => { setCallData(null); setStep('phone'); }}
+                  className="btn-secondary"
+                >
+                  Отмена
+                </button>
+              </>
+            )}
+          </div>
+        );
+
       case 'code':
         return (
           <div className="space-y-6">
@@ -424,6 +588,7 @@ const DriverAuth = () => {
             onClick={() => {
               if (step === 'code') setStep('phone');
               else if (step === 'register') setStep('phone');
+              else if (step === 'call') { setCallData(null); setStep('phone'); }
               else navigate('/');
             }}
             className="w-10 h-10 bg-white rounded-full shadow flex items-center justify-center"

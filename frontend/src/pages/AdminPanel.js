@@ -472,6 +472,44 @@ const AdminPanel = () => {
     }
   };
 
+  const handleAuthSlideUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Максимальный размер: 5 МБ');
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/settings/auth-slides/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const data = await resp.json();
+      if (data.success) {
+        setSettings(prev => ({ ...prev, auth_slides: [...(prev.auth_slides || []), data.slide] }));
+      } else {
+        alert(data.detail || 'Ошибка загрузки');
+      }
+    } catch (err) {
+      alert('Ошибка загрузки: ' + err.message);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleAuthSlideDelete = async (slideId) => {
+    if (!window.confirm('Удалить слайд?')) return;
+    try {
+      await api('DELETE', `/settings/auth-slides/${slideId}`);
+      setSettings(prev => ({ ...prev, auth_slides: (prev.auth_slides || []).filter(s => s.id !== slideId) }));
+    } catch (err) {
+      alert('Не удалось удалить');
+    }
+  };
+
   const handleIconUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1691,6 +1729,96 @@ const AdminPanel = () => {
                 </select>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Auth Slides & Fuel Stations */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Слайдер на экране входа</h3>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div>
+                <p className="font-medium text-slate-900">Автопрокрутка</p>
+                <p className="text-xs text-slate-500 mt-1">Слайды меняются автоматически</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  data-testid="settings-slides-autoplay"
+                  checked={settings.auth_slides_autoplay !== false}
+                  onChange={(e) => setSettings({...settings, auth_slides_autoplay: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Интервал автопрокрутки (сек)</label>
+              <input
+                type="number"
+                min={2}
+                max={30}
+                value={settings.auth_slides_interval ?? 5}
+                onChange={(e) => setSettings({...settings, auth_slides_interval: parseInt(e.target.value) || 5})}
+                className="input-field"
+                data-testid="settings-slides-interval"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Слайды ({(settings.auth_slides || []).length})</label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {(settings.auth_slides || []).map((s) => (
+                  <div key={s.id} className="relative group rounded-lg overflow-hidden border border-slate-200 aspect-video bg-slate-100">
+                    <img
+                      src={s.url.startsWith('http') ? s.url : `${process.env.REACT_APP_BACKEND_URL}${s.url}`}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      data-testid={`delete-slide-${s.id}`}
+                      onClick={() => handleAuthSlideDelete(s.id)}
+                      className="absolute top-1 right-1 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center opacity-90 hover:opacity-100"
+                      title="Удалить слайд"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <label className="aspect-video rounded-lg border-2 border-dashed border-slate-300 hover:border-green-500 hover:bg-green-50 flex flex-col items-center justify-center cursor-pointer transition text-slate-500 hover:text-green-600" data-testid="upload-slide-btn">
+                  <Upload className="w-5 h-5 mb-1" />
+                  <span className="text-xs">Загрузить</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={handleAuthSlideUpload}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Формат: JPG/PNG/WebP, до 5 МБ. Рекомендуется 16:9.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Fuel stations on map */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Заправки на карте</h3>
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <div>
+              <p className="font-medium text-slate-900">Показывать АЗС на карте</p>
+              <p className="text-xs text-slate-500 mt-1">Иконки заправок будут отображаться на карте пассажира и водителя (данные из OpenStreetMap)</p>
+            </div>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="settings-show-fuel"
+                checked={settings.show_fuel_stations || false}
+                onChange={(e) => setSettings({...settings, show_fuel_stations: e.target.checked})}
+                className="checkbox-custom"
+              />
+            </label>
           </div>
         </div>
 

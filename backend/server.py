@@ -241,6 +241,11 @@ class SettingsUpdate(BaseModel):
     # Notification channel routing
     notification_channel: Optional[str] = None  # 'push' | 'sms' | 'both'
     sms_events: Optional[List[str]] = None      # event keys to send via SMS
+    # Auth slides & POI
+    auth_slides: Optional[List[dict]] = None
+    auth_slides_autoplay: Optional[bool] = None
+    auth_slides_interval: Optional[int] = None
+    show_fuel_stations: Optional[bool] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -873,6 +878,8 @@ async def callcheck_start(data: dict):
     role = data.get("role")
     device_id = data.get("device_id")
     purpose = data.get("purpose") or "auth"  # "auth" | "pin_reset"
+    # Optional driver registration fields (used when a new driver first signs up)
+    driver_data = data.get("driver_data")  # {name, car_model, car_number, agreed_terms, agreed_privacy}
     if not phone or not role or not device_id:
         raise HTTPException(status_code=400, detail="Укажите телефон, роль и устройство")
 
@@ -884,8 +891,8 @@ async def callcheck_start(data: dict):
     api_key = settings.get("sms_ru_api_key", "")
     enabled = settings.get("call_verify_enabled", False)
 
-    # Call verification для регистрации и сброса PIN (customer-only)
-    if not enabled or not api_key or role != "customer":
+    # Call verification для регистрации/сброса PIN — и пассажиры, и водители
+    if not enabled or not api_key:
         return {"method": "sms"}
 
     now = datetime.now(timezone.utc)
@@ -923,6 +930,7 @@ async def callcheck_start(data: dict):
         "device_id": device_id,
         "status": "waiting",
         "purpose": purpose,
+        "driver_data": driver_data if role == "driver" and driver_data else None,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(seconds=timeout_sec)).isoformat()
     })
@@ -988,7 +996,7 @@ async def callcheck_status(data: dict):
     if check_status != "401":
         return {"status": "waiting"}
 
-    # Confirmed — register (or login) the customer
+    # Confirmed — register (or login) the user (customer or driver)
     await db.callcheck_requests.update_one({"id": verify_id}, {"$set": {"status": "confirmed"}})
     phone, role = rec["phone"], rec["role"]
     user = await db.users.find_one({"phone": phone, "role": role})
@@ -1001,19 +1009,32 @@ async def callcheck_status(data: dict):
             "id": str(uuid.uuid4()),
             "phone": phone,
             "device_id": rec["device_id"],
-            "role": "customer",
+            "role": role,
             "name": None,
             "avatar": None,
-            "is_activated": True,
+            "is_activated": True if role == "customer" else False,  # водителя активирует админ
             "total_orders": 0,
             "cancelled_orders": 0,
             "created_at": now.isoformat()
         }
+        if role == "driver":
+            dd = rec.get("driver_data") or {}
+            user["name"] = dd.get("name")
+            user["car_model"] = dd.get("car_model")
+            user["car_number"] = dd.get("car_number")
+            user["balance"] = 999
+            user["is_online"] = False
+            user["is_busy"] = False
+            user["completed_orders"] = 0
+            user["problem_orders"] = 0
+            user["is_reliable"] = False
+            user["admin_notes"] = ""
         await db.users.insert_one(user)
-        await log_action("customer_registered", user["id"], {"phone": phone, "method": "callcheck"})
+        await log_action(f"{role}_registered", user["id"], {"phone": phone, "method": "callcheck"})
+        title = "Новая регистрация пассажира" if role == "customer" else "Новая регистрация водителя (ожидает активации)"
         await send_admin_email(
-            "Новая регистрация пассажира",
-            f"Новый пассажир зарегистрирован (подтверждение звонком):\n\nТелефон: {phone}\nВремя: {now.isoformat()}"
+            title,
+            f"Регистрация (подтверждение звонком):\n\nТелефон: {phone}\nРоль: {role}\nВремя: {now.isoformat()}"
         )
     else:
         await db.users.update_one({"id": user["id"]}, {"$set": {"device_id": rec["device_id"]}})
@@ -2486,6 +2507,10 @@ async def get_public_settings():
         "pwa_icon_192_url": settings.get("pwa_icon_192_url", ""),
         "pwa_icon_512_url": settings.get("pwa_icon_512_url", ""),
         "call_verify_enabled": settings.get("call_verify_enabled", False),
+        "auth_slides": settings.get("auth_slides", []),
+        "auth_slides_autoplay": settings.get("auth_slides_autoplay", True),
+        "auth_slides_interval": settings.get("auth_slides_interval", 5),
+        "show_fuel_stations": settings.get("show_fuel_stations", False),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),
@@ -2537,6 +2562,72 @@ async def upload_app_icon(file: UploadFile = File(...), user: dict = Depends(get
     await log_action("app_icon_updated", user["id"], {"filename": filename})
     
     return {"success": True, "url": icon_url}
+
+# ============ AUTH SLIDES ============
+@settings_router.get("/auth-slides")
+async def list_auth_slides():
+    """Public list of active auth slides for role-select page"""
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    slides = settings.get("auth_slides", [])
+    return sorted(slides, key=lambda s: s.get("order", 0))
+
+@settings_router.post("/auth-slides/upload")
+async def upload_auth_slide(file: UploadFile = File(...), user: dict = Depends(get_admin_user)):
+    """Upload a new auth slide image"""
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Допустимые форматы: PNG, JPEG, WebP, GIF")
+
+    if file.size and file.size > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Максимальный размер: 5 МБ")
+
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "jpg"
+    filename = f"auth_slide_{uuid.uuid4().hex[:10]}.{ext}"
+    filepath = UPLOADS_DIR / filename
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    slide_url = f"/api/uploads/{filename}"
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    slides = settings.get("auth_slides", [])
+    slide = {
+        "id": str(uuid.uuid4()),
+        "url": slide_url,
+        "order": len(slides),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    slides.append(slide)
+    await db.settings.update_one({"id": "main"}, {"$set": {"auth_slides": slides}}, upsert=True)
+    await log_action("auth_slide_uploaded", user["id"], {"slide_id": slide["id"]})
+    return {"success": True, "slide": slide}
+
+@settings_router.delete("/auth-slides/{slide_id}")
+async def delete_auth_slide(slide_id: str, user: dict = Depends(get_admin_user)):
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    slides = [s for s in settings.get("auth_slides", []) if s.get("id") != slide_id]
+    # re-order
+    for idx, s in enumerate(slides):
+        s["order"] = idx
+    await db.settings.update_one({"id": "main"}, {"$set": {"auth_slides": slides}}, upsert=True)
+    await log_action("auth_slide_deleted", user["id"], {"slide_id": slide_id})
+    return {"success": True}
+
+@settings_router.post("/auth-slides/reorder")
+async def reorder_auth_slides(data: dict, user: dict = Depends(get_admin_user)):
+    """Reorder slides by list of ids"""
+    ids = data.get("ids") or []
+    settings = await db.settings.find_one({"id": "main"}) or {}
+    slides_by_id = {s["id"]: s for s in settings.get("auth_slides", [])}
+    reordered = []
+    for idx, sid in enumerate(ids):
+        if sid in slides_by_id:
+            s = slides_by_id[sid]
+            s["order"] = idx
+            reordered.append(s)
+    await db.settings.update_one({"id": "main"}, {"$set": {"auth_slides": reordered}}, upsert=True)
+    return {"success": True, "slides": reordered}
+
 
 @api_router.get("/manifest.json")
 async def get_manifest():
