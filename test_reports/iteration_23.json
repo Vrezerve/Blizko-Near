@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 23 fully verified. UI-only changes for production readiness confirmed. Slider aspect-ratio changed from 16/9 to 21/9 — measured getBoundingClientRect().height=160.7px on viewport 375x800 (target <180, was ~210 at 16/9). admin-login-link is conditionally rendered on RoleSelect (/) only when settings.test_mode=true — verified count=0 when test_mode=false, count=1 after admin POST /api/settings/ {test_mode:true} + reload, and count=0 again after restore. Two seeded bear-photo slides render with 2 working dot indicators. Backend regression: /api/settings/public still exposes all required keys (test_mode, call_verify_enabled, auth_slides, auth_slides_autoplay, auth_slides_interval, maintenance_mode, app_name, pwa_enabled) and admin POST /api/settings/ correctly persists test_mode toggle to public endpoint. Frontend regression: /auth/customer with valid +79XXXXXXXXX (after checking 2 consent checkboxes) → call-verify-screen; /auth/driver with valid phone → driver-call-verify-screen; /auth/pin 'Забыли код?' → PIN reset call screen showing 8-800-777-9999 for +79029981019. Iter 22 fixes (silent SMS fallback removal, driver reorder) and iter 19 (PIN forgot flow) preserved.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [
+    {"screen": "RoleSelect (/) — mobile 375", "issues": ["Pre-existing (iter 20+): .map-background renders as solid red because external map tile image not loaded in preview env — not a regression of iter 23. Slider, logo, cards, hidden admin link render correctly on top."]}
+  ]},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration23_settings_regression.py",
+    "/app/test_reports/pytest/iteration23_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RoleSelect.js L212-222: conditional {settings?.test_mode ? <button data-testid=admin-login-link/> : null} matches iter 23 spec exactly. settings null → link hidden (safe default).",
+    "index.css .auth-slider aspect-ratio: 21/9 confirmed at L180. Slider is calc(100%+3rem) wide with negative -1.5rem margins to bleed into container padding; at 375px viewport the effective width ≈ 375 → 375*9/21 = 160.7px (matches measurement).",
+    "Backend POST /api/settings/ (server.py L2484) idempotently updates test_mode; /api/settings/public (L2500) reads latest — no caching issue detected across the toggle-restore-reload cycle.",
+    "No new dependencies; no .env or supervisor changes needed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration23_settings_regression.py (new — 13 tests, all pass)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@taxi.local/admin123; existing PIN customer +79029981019 for /auth/pin regression",
+  "seed_data_creation": "None persisted. test_mode toggled true→false in try/finally; verified restored to original (false) before test exit. Random +79XXXXXXXXX phones used to avoid 60s callcheck rate-limit.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iter 23 is a small UI cosmetic + gating change. All prior iteration tests pass. Slider width uses calc(100%+3rem) with negative side margins — if container padding changes, expected height formula: viewport_width * 9 / 21 (mobile) — currently 375→160.7px. admin-login-link visibility is purely driven by GET /api/settings/public.test_mode; do not permanently flip test_mode. Backend endpoint for updating settings is POST /api/settings/ (not PATCH). Admin auth is POST /api/admin/login (not /api/auth/login). Preserve the 2 seeded auth_slides. Pre-existing map-background red rendering is env-only (missing external map tile) — do not treat as regression.",
+  "rca of the issue": "N/A — no bugs found in iter 23. Both changes are cosmetic/gating: (1) shorter hero slider on mobile (16:9→21:9 reduces vertical footprint ~24%) and (2) hide admin entry in production while retaining it in test_mode for developer/QA access. Both verified end-to-end."
+}

@@ -210,13 +210,15 @@ const RoleSelect = () => {
         </div>
         
         <div className="text-center pt-6">
-          <button
-            data-testid="admin-login-link"
-            onClick={() => navigate('/admin/login')}
-            className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            Вход для администратора
-          </button>
+          {settings?.test_mode ? (
+            <button
+              data-testid="admin-login-link"
+              onClick={() => navigate('/admin/login')}
+              className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Вход для администратора
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

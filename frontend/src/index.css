@@ -177,7 +177,7 @@ h1, h2, h3, h4, h5, h6 {
   position: relative;
   width: calc(100% + 3rem);
   margin: -1.5rem -1.5rem 1.5rem;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 21 / 9;
   overflow: hidden;
   background: #0f172a;
   border-radius: 0;
