@@ -75,6 +75,11 @@ const CustomerAuth = () => {
       setError('Введите корректный номер телефона');
       return;
     }
+    // Валидация: российский мобильный +79XXXXXXXXX
+    if (!/^\+79\d{9}$/.test(cleanPhone)) {
+      setError('Номер должен начинаться с +7 9XX (российский мобильный)');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -91,45 +96,45 @@ const CustomerAuth = () => {
         return;
       }
     } catch (e) {
-      // If check fails, proceed with SMS
+      // If check fails, proceed
     }
 
-    // Call verification (sms.ru callcheck) — used only for new registrations when enabled in admin
-    try {
-      const res = await axios.post(`${API}/auth/callcheck/start`, {
-        phone: cleanPhone,
-        role: 'customer',
-        device_id: deviceId
-      });
-      if (res.data.method === 'call') {
-        setCallData(res.data);
-        setCallTimeLeft(res.data.timeout || 300);
-        setCallConfirmed(false);
-        setStep('call');
+    // Call verification — основной метод при call_verify_enabled=true
+    const callEnabled = settings?.call_verify_enabled !== false;
+    if (callEnabled) {
+      try {
+        const res = await axios.post(`${API}/auth/callcheck/start`, {
+          phone: cleanPhone,
+          role: 'customer',
+          device_id: deviceId
+        });
+        if (res.data.method === 'call') {
+          setCallData(res.data);
+          setCallTimeLeft(res.data.timeout || 300);
+          setCallConfirmed(false);
+          setStep('call');
+          setLoading(false);
+          return;
+        }
+        // Backend вернул method='sms' → call verify отключён в настройках → падаем на SMS
+      } catch (err) {
+        const detail = err.response?.data?.detail || 'Ошибка подтверждения';
+        if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
+          setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
+        } else if (detail === 'RATE_LIMIT_HOUR') {
+          setError('Слишком много попыток. Попробуйте позже.');
+        } else if (typeof detail === 'string' && detail.startsWith('DEVICE_BLOCKED:')) {
+          setError(detail.replace('DEVICE_BLOCKED:', ''));
+          setStep('blocked');
+        } else {
+          setError(detail);
+        }
         setLoading(false);
-        return;
+        return; // Не откатываемся на SMS — показываем ошибку
       }
-    } catch (err) {
-      const detail = err.response?.data?.detail || '';
-      if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
-        setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
-        setLoading(false);
-        return;
-      }
-      if (detail === 'RATE_LIMIT_HOUR') {
-        setError('Слишком много попыток. Попробуйте позже.');
-        setLoading(false);
-        return;
-      }
-      if (typeof detail === 'string' && detail.startsWith('DEVICE_BLOCKED:')) {
-        setError(detail.replace('DEVICE_BLOCKED:', ''));
-        setStep('blocked');
-        setLoading(false);
-        return;
-      }
-      // Otherwise fall back to SMS
     }
 
+    // SMS — используется только когда call verify отключён админом
     try {
       await sendCode(cleanPhone, 'customer');
       setStep('code');

@@ -914,11 +914,15 @@ async def callcheck_start(data: dict):
         result = resp.json() if resp.content else {}
     except Exception as e:
         await system_log("error", "callcheck", f"Ошибка callcheck/add: {str(e)}", {"phone": phone[-4:]})
-        return {"method": "sms"}
+        raise HTTPException(status_code=502, detail="Сервис подтверждения временно недоступен. Попробуйте позже.")
 
     if result.get("status") != "OK":
-        await system_log("warning", "callcheck", f"callcheck/add отклонён: {result.get('status_text', 'unknown')}", {"phone": phone[-4:]})
-        return {"method": "sms"}
+        # SMS.ru отклонил (обычно — неверный формат телефона)
+        status_text = result.get("status_text") or result.get("status_code") or "unknown"
+        await system_log("warning", "callcheck", f"callcheck/add отклонён: {status_text}", {"phone": phone[-4:]})
+        # Понятная ошибка пользователю
+        msg = "Не удалось запустить подтверждение по звонку. Проверьте, что номер телефона указан корректно (российский мобильный, +7 9XX XXX-XX-XX)."
+        raise HTTPException(status_code=400, detail=msg)
 
     timeout_sec = int(settings.get("call_verify_timeout") or 300)
     verify_id = str(uuid.uuid4())
@@ -1282,6 +1286,34 @@ async def register_driver(data: DriverCreate):
     )
     
     return {"success": True, "message": "Registration submitted. Awaiting activation."}
+
+@auth_router.post("/complete-driver-profile")
+async def complete_driver_profile(data: dict, user: dict = Depends(get_current_user)):
+    """Заполнить данные водителя после подтверждения телефона звонком"""
+    if user.get("role") != "driver":
+        raise HTTPException(status_code=403, detail="Только для водителей")
+
+    name = (data.get("name") or "").strip()
+    car_model = (data.get("car_model") or "").strip()
+    car_number = (data.get("car_number") or "").strip().upper()
+    if not name or not car_model or not car_number:
+        raise HTTPException(status_code=400, detail="Заполните все поля")
+
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "name": name,
+            "car_model": car_model,
+            "car_number": car_number,
+            "profile_completed": True
+        }}
+    )
+    await log_action("driver_profile_completed", user["id"], {"phone": user.get("phone"), "name": name})
+    await send_admin_email(
+        "Новая заявка водителя (ожидает активации)",
+        f"Водитель заполнил профиль после подтверждения телефона:\n\nФИО: {name}\nТелефон: {user.get('phone')}\nАвтомобиль: {car_model}\nНомер: {car_number}\nВремя: {datetime.now(timezone.utc).isoformat()}\n\nПерейдите в админ-панель для активации."
+    )
+    return {"success": True}
 
 @auth_router.post("/check-driver")
 async def check_driver_status(data: dict):

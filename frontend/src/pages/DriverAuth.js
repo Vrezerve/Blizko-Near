@@ -31,7 +31,10 @@ const DriverAuth = () => {
 
   useEffect(() => {
     if (redirectingToPin) return;
+    // If user needs to complete profile or wait for activation, don't redirect
     if (user && user.role === 'driver') {
+      if (!user.name || !user.car_model) return; // needs profile completion
+      if (user.is_activated === false) return;   // awaiting activation
       navigate('/driver');
     }
   }, [user, navigate, redirectingToPin]);
@@ -73,6 +76,11 @@ const DriverAuth = () => {
       setError('Введите корректный номер телефона');
       return;
     }
+    // Validate Russian mobile format: +79XXXXXXXXX
+    if (!/^\+79\d{9}$/.test(cleanPhone)) {
+      setError('Номер должен начинаться с +7 9XX (российский мобильный)');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -81,8 +89,36 @@ const DriverAuth = () => {
       const status = await checkDriverStatus(cleanPhone);
       
       if (!status.exists) {
-        // New driver - show registration
-        setStep('register');
+        // New driver — verify phone by call BEFORE collecting data
+        try {
+          const res = await axios.post(`${API}/auth/callcheck/start`, {
+            phone: cleanPhone,
+            role: 'driver',
+            device_id: deviceId
+          });
+          if (res.data.method === 'call') {
+            setCallData(res.data);
+            setCallTimeLeft(res.data.timeout || 300);
+            setCallConfirmed(false);
+            setStep('call');
+            setLoading(false);
+            return;
+          }
+          // method === 'sms' means call verify disabled → keep legacy: go to register step
+          setStep('register');
+        } catch (err) {
+          const detail = err.response?.data?.detail || 'Ошибка подтверждения';
+          if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
+            setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
+          } else if (detail === 'RATE_LIMIT_HOUR') {
+            setError('Слишком много попыток. Попробуйте позже.');
+          } else if (typeof detail === 'string' && detail.startsWith('DEVICE_BLOCKED:')) {
+            setError(detail.replace('DEVICE_BLOCKED:', ''));
+            setStep('blocked');
+          } else {
+            setError(detail);
+          }
+        }
       } else if (!status.activated) {
         // Existing but not activated
         setStep('awaiting');
@@ -99,7 +135,7 @@ const DriverAuth = () => {
             return;
           }
         } catch (e) { /* pin check failed — proceed */ }
-        // No PIN - try call verification (fallback to SMS)
+        // No PIN - call verification
         try {
           const res = await axios.post(`${API}/auth/callcheck/start`, {
             phone: cleanPhone,
@@ -115,14 +151,17 @@ const DriverAuth = () => {
             return;
           }
         } catch (err) {
-          const detail = err.response?.data?.detail || '';
+          const detail = err.response?.data?.detail || 'Ошибка подтверждения';
           if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
             setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
             setLoading(false);
             return;
           }
+          setError(detail);
+          setLoading(false);
+          return;
         }
-        // Fallback to SMS
+        // If backend disabled call verify → fallback SMS
         await sendCode(cleanPhone, 'driver');
         setStep('code');
       }
@@ -153,59 +192,19 @@ const DriverAuth = () => {
     setLoading(true);
     setError('');
 
-    const cleanPhone = getCleanPhone();
-    const driverData = {
-      name: name.trim(),
-      car_model: carModel.trim(),
-      car_number: carNumber.trim().toUpperCase(),
-      agreed_terms: true,
-      agreed_privacy: true
-    };
-
-    // Try call verification first (creates driver only on confirm)
     try {
-      const res = await axios.post(`${API}/auth/callcheck/start`, {
-        phone: cleanPhone,
-        role: 'driver',
-        device_id: deviceId,
-        driver_data: driverData
+      // Phone already verified via call. Now save profile data.
+      await axios.post(`${API}/auth/complete-driver-profile`, {
+        name: name.trim(),
+        car_model: carModel.trim(),
+        car_number: carNumber.trim().toUpperCase()
+      }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('taxi_token')}` }
       });
-      if (res.data.method === 'call') {
-        setCallData(res.data);
-        setCallTimeLeft(res.data.timeout || 300);
-        setCallConfirmed(false);
-        setStep('call');
-        setLoading(false);
-        return;
-      }
-    } catch (err) {
-      const detail = err.response?.data?.detail || '';
-      if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
-        setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
-        setLoading(false);
-        return;
-      }
-      if (typeof detail === 'string' && detail.startsWith('DEVICE_BLOCKED:')) {
-        setError(detail.replace('DEVICE_BLOCKED:', ''));
-        setStep('blocked');
-        setLoading(false);
-        return;
-      }
-      // fallback to legacy SMS-based registration
-    }
-
-    // Fallback: legacy direct registration + SMS
-    try {
-      await registerDriver({ phone: cleanPhone, ...driverData });
       setStep('awaiting');
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Ошибка регистрации';
-      if (detail.startsWith('DEVICE_BLOCKED:')) {
-        setError(detail.replace('DEVICE_BLOCKED:', ''));
-        setStep('blocked');
-      } else {
-        setError(detail);
-      }
+      const detail = error.response?.data?.detail || 'Ошибка сохранения';
+      setError(detail);
     } finally {
       setLoading(false);
     }
@@ -226,17 +225,20 @@ const DriverAuth = () => {
           clearInterval(poll);
           setCallConfirmed(true);
           const confirmedUser = res.data.user;
-          if (confirmedUser && confirmedUser.is_activated === false) {
-            // New driver — wait for admin activation
-            setTimeout(() => setStep('awaiting'), 1500);
-          } else {
-            setRedirectingToPin(true);
-            applyAuthResult(res.data.token, confirmedUser, 'driver', res.data.has_pin);
-            setTimeout(() => {
+          // Apply auth token first so complete-driver-profile call can use it
+          applyAuthResult(res.data.token, confirmedUser, 'driver', res.data.has_pin);
+          setTimeout(() => {
+            if (confirmedUser && !confirmedUser.name) {
+              // New driver — needs to fill car details
+              setStep('register');
+            } else if (confirmedUser && confirmedUser.is_activated === false) {
+              setStep('awaiting');
+            } else {
+              setRedirectingToPin(true);
               if (!res.data.has_pin) navigate('/auth/pin-setup');
               else navigate('/driver');
-            }, 1500);
-          }
+            }
+          }, 1500);
         } else if (res.data.status === 'expired') {
           clearInterval(poll);
           setCallData(null);

@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 22 fully verified — critical fix for silent SMS fallback + driver auth reorder. Backend: 8/8 pytest tests pass (callcheck/start rejects invalid RU mobile with 400 and Russian detail, accepts valid customer AND driver-without-driver_data with method='call', complete-driver-profile properly enforces 401/403/400 and persists name/car_model/car_number(uppercased)/profile_completed=true). Frontend (mobile 375): Customer /auth/customer — invalid +73453453453 blocked client-side ('Номер должен начинаться с +7 9XX'), valid +79XXXXXXXXX shows call-verify-screen with 8-800-777-9999 and 4 digit boxes (NO code-input), rate-limit shows 'Повторный запрос возможен через N сек.' WITHOUT SMS fallback. Driver /auth/driver — invalid phone blocked, valid phone → driver-call-verify-screen appears FIRST (no driver-name-input). Regression: existing PIN customer (+79029981019) redirects to /auth/pin skipping call verify; 'Забыли код?' on /auth/pin still shows pin-reset-call (iter 19 preserved).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration22_callcheck_and_driver_profile.py",
+    "/app/test_reports/pytest/iteration22_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend callcheck_start correctly raises HTTPException 400 with Russian user-facing detail on sms.ru status!=OK and 502 on network error — no silent method:'sms' fallback (server.py L919-925).",
+    "complete-driver-profile endpoint at server.py L1290-1316: role check, empty-field validation, uppercase car_number normalization and profile_completed=true set — matches spec.",
+    "Frontend CustomerAuth.js/DriverAuth.js: /^\\+79\\d{9}$/ regex validates RU mobile before backend call; on backend error frontends do NOT fallback to SMS (only fallback when backend explicitly returns method='sms'). Rate limit detail 'RATE_LIMIT:N' is parsed into human-friendly message.",
+    "DriverAuth.js handleCheckPhone now calls /auth/callcheck/start immediately for new drivers (no driver_data required); handleRegister after call confirmation uses /auth/complete-driver-profile with bearer token (localStorage taxi_token) — reorder verified in UI.",
+    "Minor cosmetic note (pre-existing, iter 20 already flagged): '.map-background' renders as solid red in test env (external map tile image not loaded) — not a regression from this iteration. Slider/logo/UI overlays render correctly on top."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@taxi.local/admin123; existing PIN customer +79029981019 used for regression",
+  "seed_data_creation": "Ephemeral temp driver user created inline in complete-driver-profile persistence test and deleted in teardown. Random +79XXXXXXXXX phones used per-test to avoid rate limit collisions; callcheck_requests entries cleared before/after each callcheck test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend rate-limit is 60s per phone in callcheck_requests. Tests use unique random +79XXXXXXXXX phones and clear the collection to avoid collisions. JWT_SECRET=a1b2c3... (from backend/.env) is used to mint tokens directly for role-based endpoint tests. Real sms.ru API is hit (test_mode=false, call_verify_enabled=true) — kept to minimum (~3 hits/run). Customer PIN redirect test uses +79029981019 which has has_pin=true in seeded DB. If you need to test call confirmation end-to-end, seed a callcheck_requests doc with status='confirmed' matching a user's phone/role, then poll /api/auth/callcheck/status.",
+  "rca of the issue": "Root cause of iter 22 bugs: (1) backend callcheck_start silently returned {method:'sms'} on sms.ru rejection (e.g., landline +73453453453), which triggered frontend to show 'Введите код' SMS screen — but no SMS was ever sent because sms.ru rejected the number. Fix confirmed: now raises HTTPException 400 with Russian instructional message; frontend surfaces it and does NOT switch to code step. (2) Driver auth previously collected form data BEFORE phone verification; now handleCheckPhone → callcheck/start (no driver_data) → call step → on confirmed applyAuthResult → if !user.name step='register' → handleRegister POSTs /api/auth/complete-driver-profile with bearer token — verified via backend endpoint tests (form data now flows AFTER verification)."
+}
