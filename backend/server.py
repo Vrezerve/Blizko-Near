@@ -872,6 +872,7 @@ async def callcheck_start(data: dict):
     phone = data.get("phone")
     role = data.get("role")
     device_id = data.get("device_id")
+    purpose = data.get("purpose") or "auth"  # "auth" | "pin_reset"
     if not phone or not role or not device_id:
         raise HTTPException(status_code=400, detail="Укажите телефон, роль и устройство")
 
@@ -882,10 +883,9 @@ async def callcheck_start(data: dict):
     settings = await db.settings.find_one({"id": "main"}) or {}
     api_key = settings.get("sms_ru_api_key", "")
     enabled = settings.get("call_verify_enabled", False)
-    existing_user = await db.users.find_one({"phone": phone, "role": role})
 
-    # Call verification is used ONLY for new customer registrations, when enabled
-    if not enabled or not api_key or existing_user or role != "customer":
+    # Call verification для регистрации и сброса PIN (customer-only)
+    if not enabled or not api_key or role != "customer":
         return {"method": "sms"}
 
     now = datetime.now(timezone.utc)
@@ -922,6 +922,7 @@ async def callcheck_start(data: dict):
         "role": role,
         "device_id": device_id,
         "status": "waiting",
+        "purpose": purpose,
         "created_at": now.isoformat(),
         "expires_at": (now + timedelta(seconds=timeout_sec)).isoformat()
     })
@@ -1017,13 +1018,20 @@ async def callcheck_status(data: dict):
     else:
         await db.users.update_one({"id": user["id"]}, {"$set": {"device_id": rec["device_id"]}})
 
+    # If this was a PIN reset flow — clear existing PIN so user is redirected to PIN setup
+    pin_reset = rec.get("purpose") == "pin_reset"
+    if pin_reset and user.get("has_pin"):
+        await db.users.update_one({"id": user["id"]}, {"$set": {"has_pin": False}, "$unset": {"pin_hash": ""}})
+        user["has_pin"] = False
+        await log_action("pin_reset_via_callcheck", user["id"], {"phone": phone})
+
     token = create_access_token(user["id"], user["role"])
     user.pop("_id", None)
     user.pop("pin_hash", None)
     user.pop("password_hash", None)
     await log_action("user_login", user["id"], {"phone": phone, "role": role, "method": "callcheck"})
     await system_log("info", "callcheck", "Номер подтверждён звонком", {"phone": phone[-4:]})
-    return {"status": "confirmed", "token": token, "user": user, "has_pin": user.get("has_pin", False)}
+    return {"status": "confirmed", "token": token, "user": user, "has_pin": user.get("has_pin", False), "pin_reset": pin_reset}
 
 @auth_router.post("/set-pin")
 async def set_user_pin(data: SetPin, user: dict = Depends(get_current_user)):
@@ -1911,6 +1919,46 @@ async def update_user(user_id: str, data: dict, user: dict = Depends(get_admin_u
     await log_action("user_updated", user_id, {"updated_by": user["id"], "fields": list(update_data.keys())})
     
     return {"success": True}
+
+@admin_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, user: dict = Depends(get_admin_user)):
+    """Полное удаление пользователя со всеми связанными данными"""
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "phone": 1, "role": 1, "name": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=403, detail="Нельзя удалить администратора")
+
+    phone = target.get("phone")
+    role = target.get("role")
+
+    # Удаляем связанные данные
+    orders_deleted = 0
+    if role == "customer":
+        res = await db.orders.delete_many({"customer_id": user_id})
+        orders_deleted = res.deleted_count
+    else:  # driver
+        # Заказы, где этот водитель — обнуляем driver_id (сохраняем историю)
+        await db.orders.update_many({"driver_id": user_id}, {"$set": {"driver_id": None}})
+
+    await db.logs.delete_many({"user_id": user_id})
+    await db.notifications.delete_many({"user_id": user_id})
+    if phone:
+        await db.verification_codes.delete_many({"phone": phone})
+        await db.callcheck_requests.delete_many({"phone": phone})
+    await db.users.delete_one({"id": user_id})
+
+    await log_action("user_deleted", None, {
+        "deleted_by": user["id"],
+        "deleted_user_id": user_id,
+        "phone": phone,
+        "role": role,
+        "name": target.get("name"),
+        "orders_deleted": orders_deleted
+    })
+    await system_log("warning", "admin", f"Удалён {role}: {phone}", {"deleted_by": user.get("phone")})
+
+    return {"success": True, "orders_deleted": orders_deleted}
 
 @admin_router.get("/orders/{order_id}/route")
 async def get_order_route(order_id: str, user: dict = Depends(get_admin_user)):

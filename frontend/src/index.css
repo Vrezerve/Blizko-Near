@@ -58,7 +58,7 @@ h1, h2, h3, h4, h5, h6 {
 
 @media (min-width: 768px) {
   .app-container {
-    max-width: 28rem;
+    max-width: 48rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   }
 }
@@ -356,7 +356,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 @media (min-width: 768px) {
-  .bottom-sheet { max-width: 28rem; }
+  .bottom-sheet { max-width: 48rem; }
 }
 
 .bottom-sheet.collapsed {
@@ -765,11 +765,17 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Admin styles */
 .admin-container {
-  max-width: 80rem;
+  max-width: 96rem;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 1rem;
   min-height: 100vh;
   background-color: #f8fafc;
+}
+
+@media (min-width: 1024px) {
+  .admin-container {
+    padding: 1.5rem;
+  }
 }
 
 .admin-sidebar {
@@ -779,6 +785,56 @@ h1, h2, h3, h4, h5, h6 {
   padding: 1rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
+
+/* Mobile drawer sidebar */
+@media (max-width: 1023px) {
+  .admin-shell { flex-direction: column; }
+  .admin-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: white;
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    margin-bottom: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .admin-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    width: 17rem;
+    max-width: 85vw;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease-out;
+    border-radius: 0;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+    overflow-y: auto;
+  }
+  .admin-sidebar.open { transform: translateX(0); }
+  .admin-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.4);
+    z-index: 55;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-topbar { display: none; }
+}
+
+/* Tables — horizontal scroll on small screens */
+.admin-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.admin-table-wrap table { min-width: 640px; }
 
 .admin-nav-item {
   display: flex;

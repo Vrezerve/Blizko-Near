@@ -265,6 +265,8 @@ const AdminPanel = () => {
   const [credSaving, setCredSaving] = useState(false);
   const [credMsg, setCredMsg] = useState(null);
   const [pushStatuses, setPushStatuses] = useState({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(null);
 
   useEffect(() => {
     if (!user || user.role !== 'admin') {
@@ -429,6 +431,21 @@ const AdminPanel = () => {
       loadData();
     } catch (error) {
       console.error('Failed to update user');
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      const res = await api('DELETE', `/admin/users/${userId}`);
+      setDeletingUser(null);
+      setEditingUser(null);
+      setSelectedUser(null);
+      setEditForm({});
+      loadData();
+      const extra = res?.orders_deleted ? ` (заказов удалено: ${res.orders_deleted})` : '';
+      alert('Пользователь удалён' + extra);
+    } catch (error) {
+      alert('Не удалось удалить: ' + (error.response?.data?.detail || 'ошибка'));
     }
   };
 
@@ -818,7 +835,7 @@ const AdminPanel = () => {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden admin-table-wrap">
         <table className="w-full">
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
@@ -2878,19 +2895,60 @@ const AdminPanel = () => {
     { id: 'profile', icon: Key, label: 'Профиль' },
   ];
 
+  const activeItem = navItems.find(n => n.id === activeTab);
   return (
     <div className="admin-container">
-      <div className="flex gap-6">
+      {/* Mobile topbar */}
+      <div className="admin-topbar">
+        <button
+          data-testid="admin-burger"
+          onClick={() => setSidebarOpen(true)}
+          className="w-10 h-10 rounded-lg bg-slate-50 hover:bg-slate-100 flex items-center justify-center"
+          aria-label="Меню"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
+        <div className="flex items-center gap-2">
+          {activeItem?.icon && <activeItem.icon className="w-4 h-4 text-slate-500" />}
+          <span className="font-semibold text-slate-900 text-sm">{activeItem?.label || 'Админ'}</span>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="w-10 h-10 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-600"
+          aria-label="Выйти"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex gap-6 admin-shell">
+        {sidebarOpen && (
+          <div
+            className="admin-sidebar-backdrop lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         {/* Sidebar */}
-        <div className="admin-sidebar flex-shrink-0 sticky top-6 self-start">
+        <div className={`admin-sidebar flex-shrink-0 lg:sticky lg:top-6 self-start ${sidebarOpen ? 'open' : ''}`}>
           <div className="flex items-center gap-3 p-4 border-b border-slate-100 mb-4">
             <div className="w-10 h-10 bg-green-600 rounded-xl flex items-center justify-center">
               <Car className="w-5 h-5 text-white" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="font-semibold text-slate-900">Такси</p>
               <p className="text-xs text-slate-500">Админ-панель</p>
             </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center"
+              aria-label="Закрыть меню"
+            >
+              <X className="w-4 h-4 text-slate-500" />
+            </button>
           </div>
 
           <nav className="space-y-1">
@@ -2898,7 +2956,7 @@ const AdminPanel = () => {
               <button
                 key={item.id}
                 data-testid={`nav-${item.id}`}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
                 className={`admin-nav-item w-full ${activeTab === item.id ? 'active' : ''}`}
               >
                 <item.icon className="w-5 h-5" />
@@ -3037,12 +3095,23 @@ const AdminPanel = () => {
                 </label>
               </div>
               
-              <button
-                onClick={() => handleUpdateUser(editingUser)}
-                className="btn-primary"
-              >
-                Сохранить
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleUpdateUser(editingUser)}
+                  className="btn-primary flex-1"
+                >
+                  Сохранить
+                </button>
+                <button
+                  data-testid="delete-user-btn"
+                  onClick={() => setDeletingUser({ id: editingUser, phone: editForm.phone, name: editForm.name })}
+                  className="px-4 py-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 flex items-center gap-2 font-medium"
+                  title="Удалить пользователя"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Удалить
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3124,6 +3193,49 @@ const AdminPanel = () => {
         orderRoute={selectedOrderRoute} 
         onClose={() => setSelectedOrderRoute(null)} 
       />
+
+      {/* Delete User Confirmation */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" data-testid="delete-user-modal">
+          <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-red-100 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">Удалить навсегда?</h3>
+                <p className="text-sm text-slate-500">Действие необратимо</p>
+              </div>
+            </div>
+            <div className="p-5 space-y-3 text-sm text-slate-600">
+              <p>
+                Будет удалён пользователь <span className="font-medium text-slate-900">{deletingUser.name || deletingUser.phone || '—'}</span>.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-500">
+                <li>Все связанные заказы клиента будут удалены</li>
+                <li>Для водителя — заказы сохранятся, но без привязки</li>
+                <li>Логи, уведомления, коды подтверждения — удалены</li>
+              </ul>
+            </div>
+            <div className="p-5 border-t border-slate-100 flex gap-2">
+              <button
+                data-testid="cancel-delete-user"
+                onClick={() => setDeletingUser(null)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50"
+              >
+                Отмена
+              </button>
+              <button
+                data-testid="confirm-delete-user"
+                onClick={() => handleDeleteUser(deletingUser.id)}
+                className="flex-1 py-3 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

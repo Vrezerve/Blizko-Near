@@ -1,23 +1,29 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Delete, HelpCircle, Loader2 } from 'lucide-react';
+import { Delete, HelpCircle, Loader2, PhoneCall, Clock, Check } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
+import axios from 'axios';
+
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 const PinScreen = () => {
   const navigate = useNavigate();
-  const { loginWithPin, resetPinRequest, resetPinVerify, user, loading: authLoading } = useAuth();
+  const { loginWithPin, resetPinRequest, resetPinVerify, applyAuthResult, deviceId, user, loading: authLoading } = useAuth();
 
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const [locked, setLocked] = useState(false);
-  const [resetStep, setResetStep] = useState(null); // null, 'code', 'new_pin'
+  const [resetStep, setResetStep] = useState(null); // null, 'call', 'code', 'new_pin'
   const [resetCode, setResetCode] = useState('');
   const [newPin, setNewPin] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [shake, setShake] = useState(false);
+  const [callData, setCallData] = useState(null);
+  const [callTimeLeft, setCallTimeLeft] = useState(0);
+  const [callConfirmed, setCallConfirmed] = useState(false);
 
   const phone = localStorage.getItem('taxi_pin_phone');
   const role = localStorage.getItem('taxi_pin_role');
@@ -84,8 +90,42 @@ const PinScreen = () => {
 
   const handleForgotPin = async () => {
     if (!phone || !role) return;
-    setResetStep('code');
     setResetLoading(true);
+    setError('');
+
+    // Try call verification first (only for customers when enabled on backend)
+    try {
+      const res = await axios.post(`${API}/auth/callcheck/start`, {
+        phone,
+        role,
+        device_id: deviceId,
+        purpose: 'pin_reset'
+      });
+      if (res.data.method === 'call') {
+        setCallData(res.data);
+        setCallTimeLeft(res.data.timeout || 300);
+        setCallConfirmed(false);
+        setResetStep('call');
+        setResetLoading(false);
+        return;
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail || '';
+      if (typeof detail === 'string' && detail.startsWith('RATE_LIMIT:')) {
+        setError(`Повторный запрос возможен через ${detail.split(':')[1]} сек.`);
+        setResetLoading(false);
+        return;
+      }
+      if (detail === 'RATE_LIMIT_HOUR') {
+        setError('Слишком много попыток. Попробуйте позже.');
+        setResetLoading(false);
+        return;
+      }
+      // fall back to SMS
+    }
+
+    // Fallback: SMS-based reset
+    setResetStep('code');
     try {
       await resetPinRequest(phone, role);
     } catch (err) {
@@ -94,6 +134,39 @@ const PinScreen = () => {
       setResetLoading(false);
     }
   };
+
+  // Poll callcheck status while on the 'call' reset step
+  useEffect(() => {
+    if (resetStep !== 'call' || !callData) return;
+    let active = true;
+    const poll = setInterval(async () => {
+      try {
+        const res = await axios.post(`${API}/auth/callcheck/status`, {
+          verify_id: callData.verify_id,
+          device_id: deviceId
+        });
+        if (!active) return;
+        if (res.data.status === 'confirmed') {
+          clearInterval(poll);
+          setCallConfirmed(true);
+          applyAuthResult(res.data.token, res.data.user, role, false);
+          setTimeout(() => navigate('/auth/pin-setup'), 1500);
+        } else if (res.data.status === 'expired') {
+          clearInterval(poll);
+          setCallData(null);
+          setResetStep(null);
+          setError('Время подтверждения истекло. Попробуйте снова.');
+        }
+      } catch (e) { /* keep polling */ }
+    }, (callData.poll_interval || 3) * 1000);
+    const timer = setInterval(() => setCallTimeLeft((t) => (t > 0 ? t - 1 : 0)), 1000);
+    return () => {
+      active = false;
+      clearInterval(poll);
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetStep, callData]);
 
   const handleResetVerify = async () => {
     if (resetCode.length !== 4 || newPin.length !== 4) return;
@@ -123,6 +196,56 @@ const PinScreen = () => {
         <div className="min-h-[100dvh] flex flex-col bg-white">
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-10">
             <AppLogo size="md" className="mb-8" />
+
+            {resetStep === 'call' && callData && (
+              <div className="w-full max-w-sm space-y-5 text-center" data-testid="pin-reset-call">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 mb-2">{callData.title || 'Подтверждение номера телефона'}</h2>
+                  <p className="text-slate-500 text-sm">
+                    Для сброса PIN подтвердите номер звонком. Звонок бесплатный.
+                  </p>
+                </div>
+
+                <div className="call-verify-phone-box">
+                  {callData.call_phone_pretty || callData.call_phone}
+                </div>
+
+                <div className="call-digit-row">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div key={i} className={`call-digit-box ${callConfirmed ? 'filled' : ''}`}>
+                      {callConfirmed ? phone.replace(/\D/g, '').slice(-4)[i] : ''}
+                    </div>
+                  ))}
+                </div>
+
+                {callConfirmed ? (
+                  <div className="call-verify-success">
+                    <Check className="w-5 h-5" />
+                    Номер подтверждён!
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-500 flex items-center justify-center gap-1.5">
+                      <Clock className="w-4 h-4" />
+                      Осталось времени: {Math.floor(callTimeLeft / 60)}:{String(callTimeLeft % 60).padStart(2, '0')}
+                    </p>
+
+                    <div className="call-verify-waiting">
+                      <span className="call-pulse" />
+                      <span>Ожидаем звонок с номера {phone}. После звонка PIN будет сброшен автоматически.</span>
+                    </div>
+
+                    <a
+                      href={`tel:+${(callData.call_phone || '').replace(/\D/g, '')}`}
+                      className="btn-primary !no-underline flex items-center justify-center gap-2"
+                    >
+                      <PhoneCall className="w-5 h-5" />
+                      Позвонить
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
 
             {resetStep === 'code' && (
               <div className="w-full max-w-xs space-y-6 text-center">
@@ -188,7 +311,7 @@ const PinScreen = () => {
 
             <button
               data-testid="reset-cancel-btn"
-              onClick={() => { setResetStep(null); setLocked(false); setError(''); setPin(''); }}
+              onClick={() => { setResetStep(null); setCallData(null); setCallConfirmed(false); setLocked(false); setError(''); setPin(''); }}
               className="mt-6 text-sm text-slate-400 hover:text-slate-600"
             >
               Вернуться к вводу кода
