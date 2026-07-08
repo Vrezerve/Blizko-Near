@@ -548,7 +548,7 @@ const AdminPanel = () => {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/');
+    navigate('/admin/login', { replace: true });
   };
 
   // ── Modules & Updates ─────────────
