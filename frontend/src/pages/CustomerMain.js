@@ -10,6 +10,7 @@ import axios from 'axios';
 import YandexMap from '../components/YandexMap';
 import FabBar from '../components/FabBar';
 import TopBar from '../components/TopBar';
+import { PushCheckMenuItem } from '../components/PushCheckMenuItem';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -881,7 +882,9 @@ const CustomerMain = () => {
                 <History className="w-5 h-5 text-slate-400" />
                 История заказов
               </button>
-              
+
+              <PushCheckMenuItem testId="push-check-btn" />
+
               <button
                 data-testid="logout-btn"
                 onClick={handleLogout}

@@ -2359,6 +2359,36 @@ async def notify_test_self(user: dict = Depends(get_current_user)):
     )
     return {"success": True, "delivery": last}
 
+@api_router.get("/notifications/push-status-self")
+async def push_status_self(user: dict = Depends(get_current_user)):
+    """Check the current user's OneSignal push subscription status."""
+    settings = await db.settings.find_one({"id": "main"})
+    app_id = ((settings or {}).get("onesignal_app_id") or "").strip()
+    api_key = ((settings or {}).get("onesignal_api_key") or "").strip()
+    if not app_id or not api_key:
+        return {"status": "no_onesignal"}
+    import requests as http_requests
+    is_v2 = api_key.startswith("os_v2_")
+    headers = {"Authorization": (f"Key {api_key}" if is_v2 else f"Basic {api_key}")}
+    try:
+        url = f"https://api.onesignal.com/apps/{app_id}/users/by/external_id/{user['id']}"
+        r = http_requests.get(url, headers=headers, timeout=8)
+        if r.status_code == 404:
+            return {"status": "not_registered"}
+        if r.status_code != 200:
+            return {"status": "error"}
+        subs = (r.json().get("subscriptions") or [])
+        active = next((s for s in subs if s.get("enabled") and s.get("notification_types", 0) > 0), None)
+        if active:
+            return {"status": "subscribed"}
+        if any(s.get("notification_types") == -2 for s in subs):
+            return {"status": "blocked"}
+        if subs:
+            return {"status": "pending"}
+        return {"status": "not_registered"}
+    except Exception:
+        return {"status": "error"}
+
 @admin_router.get("/push-diagnostics/{user_id}")
 async def push_diagnostics(user_id: str, user: dict = Depends(get_admin_user)):
     """Full diagnostic info about a user's OneSignal subscription status."""
