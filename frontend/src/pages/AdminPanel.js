@@ -265,6 +265,7 @@ const AdminPanel = () => {
   const [credSaving, setCredSaving] = useState(false);
   const [credMsg, setCredMsg] = useState(null);
   const [pushStatuses, setPushStatuses] = useState({});
+  const [checkingSubId, setCheckingSubId] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState(null);
 
@@ -411,6 +412,29 @@ const AdminPanel = () => {
       }
     } catch (e) {
       // Silent fail — status will simply remain undefined
+    }
+  };
+
+  const handleCheckSubscription = async (u) => {
+    setCheckingSubId(u.id);
+    try {
+      const res = await api('POST', '/admin/push-status', { user_ids: [u.id] });
+      const status = res?.statuses?.[u.id];
+      if (res?.statuses) setPushStatuses(prev => ({ ...prev, ...res.statuses }));
+      const who = u.name || u.phone;
+      const messages = {
+        subscribed: `✓ ${who} подписан на push.\n\nУведомления доходят на устройство.`,
+        blocked: `✗ ${who} заблокировал уведомления в браузере.\n\nPush не дойдёт — сработает только SMS (если событие отмечено в «События для SMS»).`,
+        pending: `⚠ У ${who} подписка есть, но неактивна.\n\nПопросите открыть приложение заново и разрешить уведомления.`,
+        not_registered: `✗ ${who} не подписан на push.\n\nПользователь ещё не разрешил уведомления. Попросите открыть приложение и нажать «Разрешить» в запросе уведомлений. До этого уведомления дойдут только SMS.`,
+        no_onesignal: 'OneSignal не настроен. Заполните App ID и API Key в настройках.',
+        error: `Не удалось проверить подписку ${who}. Попробуйте ещё раз.`,
+      };
+      alert(messages[status] || `Статус подписки ${who}: ${status || 'неизвестен'}`);
+    } catch (e) {
+      alert(e.response?.data?.detail || 'Ошибка проверки подписки');
+    } finally {
+      setCheckingSubId(null);
     }
   };
 
@@ -923,6 +947,15 @@ const AdminPanel = () => {
                         />
                       );
                     })()}
+                    <button
+                      onClick={() => handleCheckSubscription(u)}
+                      disabled={checkingSubId === u.id}
+                      title="Проверить подписку на push"
+                      className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded disabled:opacity-50"
+                      data-testid={`check-subscription-${u.id}`}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${checkingSubId === u.id ? 'animate-spin' : ''}`} />
+                    </button>
                     <button
                       onClick={() => handleTestPushUser(u)}
                       title="Отправить тестовый push этому пользователю"
