@@ -29,6 +29,8 @@ const DriverAuth = () => {
   const [callData, setCallData] = useState(null);
   const [callTimeLeft, setCallTimeLeft] = useState(0);
   const [callConfirmed, setCallConfirmed] = useState(false);
+  const [regToken, setRegToken] = useState(null);
+  const [legacyMode, setLegacyMode] = useState(false);
 
   useEffect(() => {
     if (redirectingToPin) return;
@@ -97,7 +99,8 @@ const DriverAuth = () => {
             setLoading(false);
             return;
           }
-          // method === 'sms' means call verify disabled → keep legacy: go to register step
+          // method === 'sms' means call verify disabled → legacy flow: register via /auth/register-driver
+          setLegacyMode(true);
           setStep('register');
         } catch (err) {
           const detail = err.response?.data?.detail || 'Ошибка подтверждения';
@@ -186,18 +189,42 @@ const DriverAuth = () => {
     setError('');
 
     try {
+      if (legacyMode) {
+        // Call verify disabled — legacy registration (no token needed)
+        await registerDriver({
+          phone: getCleanPhone(),
+          name: name.trim(),
+          car_model: carModel.trim(),
+          car_number: carNumber.trim().toUpperCase(),
+          agreed_terms: agreedTerms,
+          agreed_privacy: agreedPrivacy
+        });
+        setStep('awaiting');
+        return;
+      }
       // Phone already verified via call. Now save profile data.
+      const tok = regToken || localStorage.getItem('taxi_token');
+      if (!tok) {
+        setError('Сессия подтверждения истекла. Подтвердите номер телефона ещё раз.');
+        setStep('phone');
+        return;
+      }
       await axios.post(`${API}/auth/complete-driver-profile`, {
         name: name.trim(),
         car_model: carModel.trim(),
         car_number: carNumber.trim().toUpperCase()
       }, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('taxi_token')}` }
+        headers: { Authorization: `Bearer ${tok}` }
       });
       setStep('awaiting');
     } catch (error) {
-      const detail = error.response?.data?.detail || 'Ошибка сохранения';
-      setError(detail);
+      const status = error.response?.status;
+      if (status === 401 || status === 403) {
+        setError('Сессия подтверждения истекла. Подтвердите номер телефона ещё раз.');
+        setStep('phone');
+      } else {
+        setError(error.response?.data?.detail || 'Ошибка сохранения. Проверьте соединение и попробуйте ещё раз.');
+      }
     } finally {
       setLoading(false);
     }
@@ -218,6 +245,8 @@ const DriverAuth = () => {
           clearInterval(poll);
           setCallConfirmed(true);
           const confirmedUser = res.data.user;
+          // Keep token in state too — protects against localStorage races/failures
+          setRegToken(res.data.token);
           // Apply auth token first so complete-driver-profile call can use it
           applyAuthResult(res.data.token, confirmedUser, 'driver', res.data.has_pin);
           setTimeout(() => {

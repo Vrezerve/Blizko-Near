@@ -405,6 +405,8 @@ async def send_sms_ru(phone: str, message: str, ip: Optional[str] = None) -> tup
         import requests as http_requests
         to = phone.lstrip("+").strip()
         params = {"api_id": api_key, "to": to, "msg": message, "json": 1}
+        if (settings or {}).get("test_mode"):
+            params["test"] = 1
         if ip:
             params["ip"] = ip
         resp = http_requests.get("https://sms.ru/sms/send", params=params, timeout=10)
@@ -450,11 +452,10 @@ async def send_notification(user_id: str, title: str, message: str, notification
             send_via_sms = True
             send_via_push = True
         elif channel_pref == "push":
-            # Per-event override: even in push mode, specific events can go via SMS
+            # Push always; per-event override duplicates via SMS (push + SMS)
+            send_via_push = True
             if event and event in sms_events:
                 send_via_sms = True
-            else:
-                send_via_push = True
         else:
             send_via_push = True
     
@@ -471,9 +472,11 @@ async def send_notification(user_id: str, title: str, message: str, notification
                 ok, info = await send_sms_ru(phone, sms_text, ip=ip)
                 if ok:
                     notification["status"] = "sent_sms"
+                    notification["sms_status"] = "sent_sms"
                     await system_log("info", "sms", f"SMS отправлен: {title}", {"user_id": user_id[:8], "phone": phone[-4:]})
                 else:
                     notification["status"] = "sms_failed"
+                    notification["sms_status"] = "sms_failed"
                     notification["error"] = info[:300]
                     await system_log("warning", "sms", f"SMS не отправлен: {info[:120]}", {"user_id": user_id[:8]})
         except Exception as e:
@@ -484,10 +487,13 @@ async def send_notification(user_id: str, title: str, message: str, notification
     if send_via_push and onesignal_app_id and onesignal_api_key:
         try:
             # Build list of OneSignal apps to send to: primary (web) + optional Android
-            android_app_id = (settings or {}).get("onesignal_android_app_id", "")
-            android_api_key = (settings or {}).get("onesignal_android_api_key", "")
-            os_apps = [(onesignal_app_id, onesignal_api_key, "web")]
-            if android_app_id and android_api_key:
+            primary_app_id = onesignal_app_id.strip()
+            primary_api_key = onesignal_api_key.strip()
+            android_app_id = ((settings or {}).get("onesignal_android_app_id") or "").strip()
+            android_api_key = ((settings or {}).get("onesignal_android_api_key") or "").strip()
+            os_apps = [(primary_app_id, primary_api_key, "web")]
+            # Skip Android duplicate if it's the same OneSignal app as web (avoids 403 with wrong key)
+            if android_app_id and android_api_key and android_app_id != primary_app_id:
                 os_apps.append((android_app_id, android_api_key, "android"))
             
             import requests as http_requests
@@ -553,7 +559,7 @@ async def send_notification(user_id: str, title: str, message: str, notification
                     "attempts": all_attempts,
                 })
             else:
-                err_str = str(last_error_overall).lower()
+                err_str = str(last_error_overall).lower() + " " + str(all_attempts).lower()
                 if "not subscribed" in err_str or "invalid_aliases" in err_str or "no subscribers" in err_str:
                     notification["status"] = "no_subscription"
                     await system_log("info", "push", f"Push пропущен (не подписан): {title}", {

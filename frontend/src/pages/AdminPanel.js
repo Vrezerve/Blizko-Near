@@ -1488,7 +1488,7 @@ const AdminPanel = () => {
 
             <div className="pt-3 border-t border-slate-100">
               <p className="text-sm font-medium text-slate-700 mb-2">📱 Android-приложение (отдельный OneSignal app)</p>
-              <p className="text-xs text-slate-500 mb-3">Если у вас есть нативное Android-приложение с другим OneSignal app — заполните эти поля. Push будет дублироваться и туда.</p>
+              <p className="text-xs text-slate-500 mb-3">Заполняйте ТОЛЬКО если у Android-приложения ОТДЕЛЬНЫЙ OneSignal app (App ID отличается от основного). Если App ID совпадает с основным — оставьте поля пустыми, push и так дойдёт. API Key — это REST API Key (начинается с os_v2_...).</p>
               <div className="grid grid-cols-1 gap-3">
                 <input
                   type="text"

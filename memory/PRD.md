@@ -138,3 +138,12 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] ПК-вёрстка = планшет (28rem, push-banner max-width 26rem)
 - [x] Русификация ~33 сообщений об ошибках бэкенда (Invalid code → «Неверный код» и т.д.)
 - Тесты: /app/test_reports/iteration_18.json — 100% backend (10/10) + 100% frontend
+
+## Багфиксы — July 2026 (push + регистрация водителя)
+- [x] OneSignal Android 403: бэкенд игнорирует Android-дубль, если android_app_id совпадает с основным App ID (юзер использует один OneSignal app для веба и APK — поля Android оставлены пустыми). Ключи/ID теперь strip()-ятся. Подсказка в админке обновлена (нужен REST API Key os_v2_...)
+- [x] Логика «Уведомления о заказах»: в режиме «Только Push» события из sms_events теперь ДУБЛИРУЮТСЯ (push + SMS), а не заменяют push. Проверено e2e: создание заказа → SMS отправлен + push помечен «не подписан»
+- [x] Статус no_subscription определяется по всем попыткам (не затирается ошибкой второго app)
+- [x] notification.sms_status сохраняется отдельно (push-статус не затирает SMS-статус)
+- [x] SMS.ru: при test_mode=True добавляется параметр test=1 (без списания денег)
+- [x] Регистрация водителя «Ошибка сохранения»: токен после подтверждения звонком хранится в state (regToken) + fallback localStorage; при 401/403 — понятное сообщение и возврат к вводу номера; починен legacy-путь (call verify выключен → /auth/register-driver)
+- Внимание: «All included players are not subscribed» = устройство не подписано на push (нужно разрешить уведомления), это не ошибка ключей
