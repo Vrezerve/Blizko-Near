@@ -11,6 +11,7 @@ import YandexMap from '../components/YandexMap';
 import FabBar from '../components/FabBar';
 import TopBar from '../components/TopBar';
 import { PushCheckMenuItem } from '../components/PushCheckMenuItem';
+import { initSoundUnlock, playSuccessSound, showLocalNotification } from '../lib/soundAlert';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -202,6 +203,7 @@ const CustomerMain = () => {
   const wsRef = useRef(null);
   const noDriverTimerRef = useRef(null);
   const locationTrackingRef = useRef(null);
+  const lastOrderStatusRef = useRef(null);
 
   useEffect(() => {
     if (!user || user.role !== 'customer') {
@@ -233,6 +235,8 @@ const CustomerMain = () => {
       }
     };
     fetchSettings();
+
+    initSoundUnlock();
 
     // Fetch driver stats
     const fetchStats = async () => {
@@ -271,8 +275,19 @@ const CustomerMain = () => {
     const pollOrderStatus = async () => {
       try {
         const res = await api('GET', '/orders/my-active');
-        if (!res || res.status === 'none') return;
-        
+        if (!res || res.status === 'none') { lastOrderStatusRef.current = null; return; }
+
+        // Sound alerts on status transitions (in-app notifications, no push needed)
+        const prevStatus = lastOrderStatusRef.current;
+        if (prevStatus === 'pending' && res.status === 'accepted') {
+          playSuccessSound();
+          showLocalNotification('Водитель найден', res.driver_name ? `${res.driver_name} едет к вам` : 'Водитель едет к вам');
+        } else if (prevStatus === 'accepted' && res.status === 'completed') {
+          playSuccessSound();
+          showLocalNotification('Поездка завершена', 'Спасибо, что воспользовались сервисом!');
+        }
+        lastOrderStatusRef.current = res.status;
+
         if (res.status === 'accepted' && orderState === 'searching') {
           setCurrentOrder(res);
           setOrderState('found');

@@ -11,6 +11,7 @@ import YandexMap from '../components/YandexMap';
 import FabBar from '../components/FabBar';
 import TopBar from '../components/TopBar';
 import { PushCheckMenuItem } from '../components/PushCheckMenuItem';
+import { initSoundUnlock, playNewOrderSound, showLocalNotification } from '../lib/soundAlert';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -83,6 +84,7 @@ const DriverMain = () => {
   
   const wsRef = useRef(null);
   const isReadyRef = useRef(false);
+  const prevOrderIdsRef = useRef(null);
 
   // Sync isReady with user on mount only
   useEffect(() => {
@@ -144,6 +146,23 @@ const DriverMain = () => {
     };
     fetchSettings();
 
+    initSoundUnlock();
+
+    // Detect NEW orders and alert with sound (in-app notifications, no push needed)
+    const handleOrdersUpdate = (list) => {
+      setAvailableOrders(list);
+      const prev = prevOrderIdsRef.current;
+      const ids = new Set(list.map((o) => o.id));
+      if (prev !== null && isReadyRef.current) {
+        const fresh = list.filter((o) => !prev.has(o.id));
+        if (fresh.length > 0) {
+          playNewOrderSound();
+          showLocalNotification('Новая заявка', fresh[0].address ? `Адрес: ${fresh[0].address}` : 'Поступил новый заказ');
+        }
+      }
+      prevOrderIdsRef.current = ids;
+    };
+
     // Fetch active orders
     const fetchOrders = async () => {
       try {
@@ -160,7 +179,7 @@ const DriverMain = () => {
         } else {
           setCurrentOrder(null);
         }
-        setAvailableOrders(data?.available_orders || []);
+        handleOrdersUpdate(data?.available_orders || []);
       } catch (error) {
         console.error('Failed to fetch orders');
       }
@@ -175,7 +194,7 @@ const DriverMain = () => {
       try {
         const data = await api('GET', '/orders/active');
         if (data?.available_orders) {
-          setAvailableOrders(data.available_orders);
+          handleOrdersUpdate(data.available_orders);
         }
       } catch (e) {}
     }, 3000);
