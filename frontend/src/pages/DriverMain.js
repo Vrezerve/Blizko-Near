@@ -12,6 +12,7 @@ import FabBar from '../components/FabBar';
 import TopBar from '../components/TopBar';
 import { PushCheckMenuItem } from '../components/PushCheckMenuItem';
 import { initSoundUnlock, playNewOrderSound, showLocalNotification } from '../lib/soundAlert';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -499,7 +500,7 @@ const DriverMain = () => {
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
               <>
                 <Power className="w-5 h-5" />
-                {isReady ? 'Уйти с линии' : 'Выйти на линию'}
+                {isReady ? getText(settings, 'driver_go_offline') : getText(settings, 'driver_go_online')}
               </>
             )}
           </button>
@@ -511,7 +512,7 @@ const DriverMain = () => {
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Активные заявки</h2>
+            <h2 className="text-xl font-bold text-slate-900">{getText(settings, 'driver_orders_title')}</h2>
             <p className="text-sm text-slate-500">{availableOrders.length} доступно</p>
           </div>
           <button
@@ -528,7 +529,7 @@ const DriverMain = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Wallet className="w-5 h-5 text-slate-400" />
-              <span className="text-slate-700">Баланс</span>
+              <span className="text-slate-700">{getText(settings, 'driver_balance_label')}</span>
             </div>
             <span className={`font-bold ${user?.balance > 0 ? 'text-green-600' : 'text-red-600'}`}>
               {user?.balance || 0}
@@ -564,7 +565,7 @@ const DriverMain = () => {
                     disabled={loading}
                     className="px-4 py-2 bg-green-600 text-white rounded-full text-sm font-medium hover:bg-green-700 transition-colors"
                   >
-                    Принять
+                    {getText(settings, 'driver_accept_btn')}
                   </button>
                 </div>
                 {showEtaSelect === order.id && (
@@ -664,7 +665,7 @@ const DriverMain = () => {
                 className="mt-4 w-full flex items-center justify-center gap-2 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100"
               >
                 <Edit2 className="w-4 h-4" />
-                Редактировать профиль
+                {getText(settings, 'menu_edit_profile')}
               </button>
             </div>
             
@@ -686,10 +687,10 @@ const DriverMain = () => {
                 className="w-full flex items-center gap-3 p-3 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
               >
                 <History className="w-5 h-5 text-slate-400" />
-                История заказов
+                {getText(settings, 'menu_history')}
               </button>
 
-              <PushCheckMenuItem testId="driver-push-check-btn" />
+              <PushCheckMenuItem testId="driver-push-check-btn" label={getText(settings, 'menu_notifications')} />
 
               <button
                 data-testid="driver-logout-btn"
@@ -697,7 +698,7 @@ const DriverMain = () => {
                 className="w-full flex items-center gap-3 p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               >
                 <LogOut className="w-5 h-5" />
-                Выйти
+                {getText(settings, 'menu_logout')}
               </button>
             </div>
           </div>

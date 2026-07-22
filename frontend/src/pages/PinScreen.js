@@ -338,7 +338,7 @@ const PinScreen = () => {
           <AppLogo size="md" className="mb-8" />
 
           {/* Title */}
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Введите код</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">{getText(uiSettings, 'pin_enter_title')}</h1>
           <p className="text-sm text-slate-500 text-center mb-8 max-w-[240px]">
             Введите 4-значный код, который вы придумали при регистрации
           </p>
@@ -426,7 +426,7 @@ const PinScreen = () => {
               onClick={handleSwitchAccount}
               className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
             >
-              Другой аккаунт
+              {getText(uiSettings, 'switch_account')}
             </button>
           </div>
         </div>

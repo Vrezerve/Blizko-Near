@@ -55,7 +55,7 @@ const grantedLocally = () => {
   }
 };
 
-export const PushCheckMenuItem = ({ testId = 'push-check-btn' }) => {
+export const PushCheckMenuItem = ({ testId = 'push-check-btn', label = 'Уведомления' }) => {
   const { api, user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(null); // null | subscribed | not_registered | blocked | pending | no_onesignal | error
@@ -133,7 +133,7 @@ export const PushCheckMenuItem = ({ testId = 'push-check-btn' }) => {
       ) : (
         <Bell className="w-5 h-5 text-slate-400" />
       )}
-      <span className="flex-1 text-left">{busy ? 'Проверяем подписку…' : 'Уведомления'}</span>
+      <span className="flex-1 text-left">{busy ? 'Проверяем подписку…' : label}</span>
       {!busy && (
         <span
           data-testid={`${testId}-indicator`}

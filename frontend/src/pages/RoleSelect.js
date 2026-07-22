@@ -164,7 +164,7 @@ const RoleSelect = () => {
         <div className="flex-1 flex flex-col items-center justify-center">
           <AppLogo size="lg" className="mb-6" />
           
-          <p className="text-slate-500 mb-10 text-center">Выберите как вы хотите использовать сервис</p>
+          <p className="text-slate-500 mb-10 text-center">{getText(settings, 'role_select_subtitle')}</p>
           
           <div className="w-full space-y-4">
             <button
@@ -177,7 +177,7 @@ const RoleSelect = () => {
                   <User className="w-6 h-6 text-green-600" />
                 </div>
                 <div className="text-left">
-                  <p className="font-semibold text-slate-900">Войти как заказчик</p>
+                  <p className="font-semibold text-slate-900">{getText(settings, 'role_customer_title')}</p>
                   <p className="text-sm text-slate-500">{getText(settings, 'role_customer_subtitle')}</p>
                 </div>
               </div>
@@ -194,8 +194,8 @@ const RoleSelect = () => {
                   <Car className="w-6 h-6 text-blue-600" />
                 </div>
                 <div className="text-left">
-                  <p className="font-semibold text-slate-900">Войти как исполнитель</p>
-                  <p className="text-sm text-slate-500">Принимать заказы</p>
+                  <p className="font-semibold text-slate-900">{getText(settings, 'role_driver_title')}</p>
+                  <p className="text-sm text-slate-500">{getText(settings, 'role_driver_subtitle')}</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition-colors" />

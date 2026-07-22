@@ -316,7 +316,7 @@ const CustomerAuth = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'customer_auth_title')}</h2>
-                  <p className="text-slate-500">Введите номер телефона для получения кода</p>
+                  <p className="text-slate-500">{getText(settings, 'customer_auth_subtitle')}</p>
                 </div>
 
                 <div>

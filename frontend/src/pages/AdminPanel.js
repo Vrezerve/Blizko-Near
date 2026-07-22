@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import YandexMap from '../components/YandexMap';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { UI_TEXT_DEFS } from '../lib/uiTexts';
+import { UI_TEXT_GROUPS } from '../lib/uiTexts';
+import { toast } from 'sonner';
 
 // Admin Map Component showing online drivers
 const AdminMap = ({ drivers, onDriverClick, apiKey }) => {
@@ -324,6 +325,7 @@ const AdminPanel = () => {
           setNotifications(notifData);
           break;
         case 'settings':
+        case 'texts':
           const settingsData = await api('GET', '/settings/');
           setSettings(settingsData);
           break;
@@ -399,7 +401,7 @@ const AdminPanel = () => {
       // Update push status for that user
       fetchPushStatuses([u]);
     } catch (e) {
-      alert(e.response?.data?.detail || e.message || 'Ошибка отправки push');
+      toast.error(e.response?.data?.detail || e.message || 'Ошибка отправки push');
     }
   };
 
@@ -468,9 +470,9 @@ const AdminPanel = () => {
       setEditForm({});
       loadData();
       const extra = res?.orders_deleted ? ` (заказов удалено: ${res.orders_deleted})` : '';
-      alert('Пользователь удалён' + extra);
+      toast.success('Пользователь удалён', { description: extra ? extra.trim() : undefined });
     } catch (error) {
-      alert('Не удалось удалить: ' + (error.response?.data?.detail || 'ошибка'));
+      toast.error('Не удалось удалить', { description: error.response?.data?.detail || 'ошибка' });
     }
   };
 
@@ -491,17 +493,55 @@ const AdminPanel = () => {
   const handleSaveSettings = async () => {
     try {
       await api('POST', '/settings/', settings);
-      alert('Настройки сохранены');
+      toast.success('Настройки сохранены', { description: 'Изменения уже применились в приложении' });
     } catch (error) {
-      console.error('Failed to save settings');
+      toast.error('Не удалось сохранить настройки', { description: error.response?.data?.detail || 'Проверьте соединение и попробуйте ещё раз' });
     }
   };
+
+  const renderTexts = () => (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">Тексты интерфейса</h3>
+        <p className="text-sm text-slate-500">Меняйте любые надписи приложения без программиста. Пустое поле = текст по умолчанию (показан серым как подсказка).</p>
+      </div>
+      {UI_TEXT_GROUPS.map((g) => (
+        <div key={g.group} className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-base font-semibold text-slate-900 mb-4">{g.group}</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {g.items.map((t) => (
+              <div key={t.key}>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{t.label}</label>
+                <input
+                  type="text"
+                  data-testid={`ui-text-${t.key}`}
+                  value={(settings.ui_texts || {})[t.key] || ''}
+                  onChange={(e) => setSettings({ ...settings, ui_texts: { ...(settings.ui_texts || {}), [t.key]: e.target.value } })}
+                  className="input-field"
+                  placeholder={t.def}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="sticky bottom-4">
+        <button
+          data-testid="save-texts-btn"
+          onClick={handleSaveSettings}
+          className="btn-primary w-full shadow-lg"
+        >
+          Сохранить тексты
+        </button>
+      </div>
+    </div>
+  );
 
   const handleAuthSlideUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      alert('Максимальный размер: 5 МБ');
+      toast.error('Максимальный размер: 5 МБ');
       return;
     }
     try {
@@ -516,10 +556,10 @@ const AdminPanel = () => {
       if (data.success) {
         setSettings(prev => ({ ...prev, auth_slides: [...(prev.auth_slides || []), data.slide] }));
       } else {
-        alert(data.detail || 'Ошибка загрузки');
+        toast.error(data.detail || 'Ошибка загрузки');
       }
     } catch (err) {
-      alert('Ошибка загрузки: ' + err.message);
+      toast.error('Ошибка загрузки', { description: err.message });
     } finally {
       e.target.value = '';
     }
@@ -531,7 +571,7 @@ const AdminPanel = () => {
       await api('DELETE', `/settings/auth-slides/${slideId}`);
       setSettings(prev => ({ ...prev, auth_slides: (prev.auth_slides || []).filter(s => s.id !== slideId) }));
     } catch (err) {
-      alert('Не удалось удалить');
+      toast.error('Не удалось удалить');
     }
   };
 
@@ -541,7 +581,7 @@ const AdminPanel = () => {
     
     const maxSize = 2 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('Максимальный размер файла: 2 МБ');
+      toast.error('Максимальный размер файла: 2 МБ');
       return;
     }
     
@@ -559,12 +599,12 @@ const AdminPanel = () => {
       const data = await response.json();
       if (data.success) {
         setSettings(prev => ({ ...prev, app_icon_url: data.url }));
-        alert('Иконка загружена');
+        toast.success('Иконка загружена');
       } else {
-        alert(data.detail || 'Ошибка загрузки');
+        toast.error(data.detail || 'Ошибка загрузки');
       }
     } catch (error) {
-      alert('Ошибка загрузки иконки');
+      toast.error('Ошибка загрузки иконки');
     } finally {
       setIconUploading(false);
       e.target.value = '';
@@ -601,13 +641,13 @@ const AdminPanel = () => {
       loadData();
     } catch (error) {
       setModuleUploading(null);
-      alert('Ошибка добавления модуля');
+      toast.error('Ошибка добавления модуля');
     }
   };
 
   const handleModuleFileUpload = async (moduleId, file) => {
     if (!file || !file.name.endsWith('.zip')) {
-      alert('Допустим только формат ZIP');
+      toast.error('Допустим только формат ZIP');
       return;
     }
     setModuleUploading(moduleId);
@@ -623,10 +663,10 @@ const AdminPanel = () => {
       if (data.success) {
         loadData();
       } else {
-        alert(data.detail || 'Ошибка загрузки');
+        toast.error(data.detail || 'Ошибка загрузки');
       }
     } catch (error) {
-      alert('Ошибка загрузки архива');
+      toast.error('Ошибка загрузки архива');
     } finally {
       setModuleUploading(null);
     }
@@ -637,7 +677,7 @@ const AdminPanel = () => {
       await api('POST', `/admin/modules/${moduleId}/toggle`);
       loadData();
     } catch (error) {
-      alert('Ошибка');
+      toast.error('Ошибка');
     }
   };
 
@@ -652,10 +692,10 @@ const AdminPanel = () => {
       if (data.success) {
         loadData();
       } else {
-        alert(data.detail || 'Ошибка удаления');
+        toast.error(data.detail || 'Ошибка удаления');
       }
     } catch (error) {
-      alert('Ошибка удаления модуля');
+      toast.error('Ошибка удаления модуля');
     }
   };
 
@@ -663,7 +703,7 @@ const AdminPanel = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.name.endsWith('.zip')) {
-      alert('Допустим только формат ZIP');
+      toast.error('Допустим только формат ZIP');
       return;
     }
     setUpdateUploading(true);
@@ -1200,7 +1240,7 @@ const AdminPanel = () => {
       });
       setSystemLogs([]);
     } catch (error) {
-      alert('Ошибка очистки');
+      toast.error('Ошибка очистки');
     }
   };
 
@@ -1677,7 +1717,7 @@ const AdminPanel = () => {
                     });
                     const data = await res.json();
                     if (data.url) setSettings({...settings, custom_pin_url: data.url});
-                  } catch(err) { alert('Ошибка загрузки'); }
+                  } catch(err) { toast.error('Ошибка загрузки'); }
                   e.target.value = '';
                 }} />
               </label>
@@ -1734,7 +1774,7 @@ const AdminPanel = () => {
                     });
                     const data = await res.json();
                     if (data.url) setSettings({...settings, map_bg_image_url: data.url});
-                  } catch(err) { alert('Ошибка загрузки'); }
+                  } catch(err) { toast.error('Ошибка загрузки'); }
                   e.target.value = '';
                 }} />
               </label>
@@ -1952,7 +1992,7 @@ const AdminPanel = () => {
                         });
                         const data = await res.json();
                         if (data.url) setSettings({...settings, [`pwa_icon_${size}_url`]: data.url});
-                      } catch(err) { alert('Ошибка загрузки'); }
+                      } catch(err) { toast.error('Ошибка загрузки'); }
                       e.target.value = '';
                     }} />
                   </label>
@@ -2117,9 +2157,9 @@ const AdminPanel = () => {
                 onClick={async () => {
                   try {
                     const res = await api('POST', '/admin/test-smtp');
-                    alert(res.message || 'Тестовое письмо отправлено!');
+                    toast.success(res.message || 'Тестовое письмо отправлено!');
                   } catch (e) {
-                    alert(e.response?.data?.detail || 'Ошибка отправки');
+                    toast.error(e.response?.data?.detail || 'Ошибка отправки');
                   }
                 }}
                 className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100"
@@ -2131,7 +2171,7 @@ const AdminPanel = () => {
                 onClick={async () => {
                   try {
                     const res = await api('POST', '/admin/test-push');
-                    alert(res.message || 'Тестовый push отправлен!');
+                    toast.success(res.message || 'Тестовый push отправлен!');
                   } catch (e) {
                     alert(e.response?.data?.detail || 'OneSignal не настроен');
                   }
@@ -2257,27 +2297,6 @@ const AdminPanel = () => {
                 );
               })}
             </div>
-          </div>
-        </div>
-
-        {/* UI Texts (editable) */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-1">Тексты интерфейса</h3>
-          <p className="text-sm text-slate-500 mb-4">Меняйте надписи в приложении без программиста. Пустое поле = текст по умолчанию (показан как подсказка).</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {UI_TEXT_DEFS.map((t) => (
-              <div key={t.key}>
-                <label className="block text-sm font-medium text-slate-700 mb-2">{t.label}</label>
-                <input
-                  type="text"
-                  data-testid={`ui-text-${t.key}`}
-                  value={(settings.ui_texts || {})[t.key] || ''}
-                  onChange={(e) => setSettings({ ...settings, ui_texts: { ...(settings.ui_texts || {}), [t.key]: e.target.value } })}
-                  className="input-field"
-                  placeholder={t.def}
-                />
-              </div>
-            ))}
           </div>
         </div>
 
@@ -3130,6 +3149,7 @@ const AdminPanel = () => {
     { id: 'logs', icon: MessageSquare, label: 'Логи' },
     { id: 'syslog', icon: AlertTriangle, label: 'Системные' },
     { id: 'notifications', icon: Bell, label: 'Уведомления' },
+    { id: 'texts', icon: Edit2, label: 'Тексты' },
     { id: 'settings', icon: Settings, label: 'Настройки' },
     { id: 'fabbar', icon: Plus, label: 'Fab-бар' },
     { id: 'profile', icon: Key, label: 'Профиль' },
@@ -3234,6 +3254,7 @@ const AdminPanel = () => {
               {activeTab === 'logs' && renderLogs()}
               {activeTab === 'syslog' && renderSystemLogs()}
               {activeTab === 'notifications' && renderNotifications()}
+              {activeTab === 'texts' && renderTexts()}
               {activeTab === 'settings' && renderSettings()}
               {activeTab === 'fabbar' && renderFabBar()}
               {activeTab === 'profile' && renderProfile()}

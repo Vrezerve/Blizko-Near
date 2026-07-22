@@ -173,6 +173,7 @@ const CustomerMain = () => {
   const [agreedRules, setAgreedRules] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [settings, setSettings] = useState(null);
+  const settingsRef = useRef(null);
   const [driverStats, setDriverStats] = useState({ online: 0, busy: 0, available: 0 });
   const [userLocation, setUserLocation] = useState(null);
   const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -235,6 +236,7 @@ const CustomerMain = () => {
       try {
         const response = await axios.get(`${API}/settings/public`);
         setSettings(response.data);
+        settingsRef.current = response.data;
       } catch (error) {
         console.error('Failed to fetch settings');
       }
@@ -288,7 +290,7 @@ const CustomerMain = () => {
             setOrderState('idle');
             setCurrentOrder(null);
             setNoDriverTimer(0);
-            setError('Исполнитель не найден. Попробуйте разместить заказ ещё раз.');
+            setError(getText(settingsRef.current, 'no_driver_error'));
           }
           lastOrderStatusRef.current = null;
           return;
@@ -345,7 +347,7 @@ const CustomerMain = () => {
           setNoDriverTimer(0);
           lastOrderStatusRef.current = null;
           if (res.cancelled_by === 'timeout') {
-            setError('Исполнитель не найден. Попробуйте разместить заказ ещё раз.');
+            setError(getText(settingsRef.current, 'no_driver_error'));
           } else if (!wasSearching) {
             playSuccessSound();
             setError('Исполнитель отменил заказ. Попробуйте разместить заказ ещё раз.');
@@ -637,7 +639,7 @@ const CustomerMain = () => {
 
             {noDriverTimer > 0 && (
               <div className="bg-yellow-50 rounded-xl p-4">
-                <p className="text-yellow-800 font-medium mb-3">К сожалению, водители заняты</p>
+                <p className="text-yellow-800 font-medium mb-3">{getText(settings, 'drivers_busy')}</p>
                 <div className="flex gap-3">
                   <button
                     data-testid="retry-search-btn"
@@ -713,7 +715,7 @@ const CustomerMain = () => {
               className="btn-danger w-full"
             >
               <AlertTriangle className="w-5 h-5" />
-              Сообщить о проблеме
+              {getText(settings, 'report_problem_btn')}
             </button>
           </div>
         );
@@ -725,8 +727,8 @@ const CustomerMain = () => {
               <CheckCircle className="w-10 h-10 text-green-600" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Поездка завершена</h2>
-              <p className="text-slate-500">Спасибо за использование сервиса!</p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'completed_title')}</h2>
+              <p className="text-slate-500">{getText(settings, 'completed_text')}</p>
             </div>
           </div>
         );
@@ -735,8 +737,8 @@ const CustomerMain = () => {
         return (
           <div className="space-y-5">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-1">Куда едем?</h2>
-              <p className="text-slate-500">Укажите адрес подачи</p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-1">{getText(settings, 'where_title')}</h2>
+              <p className="text-slate-500">{getText(settings, 'where_subtitle')}</p>
             </div>
 
             <div className="space-y-4">
@@ -752,7 +754,7 @@ const CustomerMain = () => {
                     onFocus={() => addressSuggestions.length > 0 && setShowSuggestions(true)}
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     className="input-field !pl-14"
-                    placeholder="Введите адрес или нажмите на карту"
+                    placeholder={getText(settings, 'address_placeholder')}
                   />
                   {showSuggestions && addressSuggestions.length > 0 && (
                     <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-30 max-h-48 overflow-y-auto">
@@ -770,7 +772,7 @@ const CustomerMain = () => {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-slate-400 mt-1">Или нажмите на карту для выбора точки</p>
+                <p className="text-xs text-slate-400 mt-1">{getText(settings, 'map_hint')}</p>
               </div>
 
               <div>
@@ -828,11 +830,11 @@ const CustomerMain = () => {
             <div className="flex justify-center gap-6 text-sm">
               <div className="text-center">
                 <p className="font-semibold text-green-600">{driverStats.available}</p>
-                <p className="text-slate-500">Свободно</p>
+                <p className="text-slate-500">{getText(settings, 'stats_free')}</p>
               </div>
               <div className="text-center">
                 <p className="font-semibold text-yellow-600">{driverStats.busy}</p>
-                <p className="text-slate-500">Занято</p>
+                <p className="text-slate-500">{getText(settings, 'stats_busy')}</p>
               </div>
             </div>
           </div>
@@ -935,10 +937,10 @@ const CustomerMain = () => {
                 className="w-full flex items-center gap-3 p-3 text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
               >
                 <History className="w-5 h-5 text-slate-400" />
-                История заказов
+                {getText(settings, 'menu_history')}
               </button>
 
-              <PushCheckMenuItem testId="push-check-btn" />
+              <PushCheckMenuItem testId="push-check-btn" label={getText(settings, 'menu_notifications')} />
 
               <button
                 data-testid="logout-btn"
@@ -946,7 +948,7 @@ const CustomerMain = () => {
                 className="w-full flex items-center gap-3 p-3 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               >
                 <LogOut className="w-5 h-5" />
-                Выйти
+                {getText(settings, 'menu_logout')}
               </button>
             </div>
           </div>

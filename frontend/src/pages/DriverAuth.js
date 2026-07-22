@@ -337,7 +337,7 @@ const DriverAuth = () => {
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'driver_auth_title')}</h2>
-              <p className="text-slate-500">Введите номер телефона</p>
+              <p className="text-slate-500">{getText(settings, 'driver_auth_subtitle')}</p>
             </div>
 
             <div>
@@ -406,8 +406,8 @@ const DriverAuth = () => {
         return (
           <div className="space-y-5">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Регистрация водителя</h2>
-              <p className="text-slate-500">Заполните данные о себе</p>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'driver_register_title')}</h2>
+              <p className="text-slate-500">{getText(settings, 'driver_register_subtitle')}</p>
             </div>
 
             <div className="space-y-4">
@@ -480,7 +480,7 @@ const DriverAuth = () => {
               <Clock className="w-10 h-10 text-yellow-600" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Ожидается активация</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'driver_awaiting_title')}</h2>
               <p className="text-slate-500">
                 Ваша заявка отправлена на проверку.<br />
                 Администратор активирует ваш аккаунт в ближайшее время.
