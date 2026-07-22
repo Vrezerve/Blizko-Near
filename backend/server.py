@@ -246,6 +246,15 @@ class SettingsUpdate(BaseModel):
     auth_slides_autoplay: Optional[bool] = None
     auth_slides_interval: Optional[int] = None
     show_fuel_stations: Optional[bool] = None
+    # SEO
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    # UI texts (editable from admin)
+    ui_texts: Optional[dict] = None
+    # Address suggestions dropdown
+    address_suggestions_enabled: Optional[bool] = None
+    # Auto-cancel pending orders without a driver (minutes, 0 = disabled)
+    order_auto_cancel_minutes: Optional[int] = None
 
 class AdminLogin(BaseModel):
     email: str

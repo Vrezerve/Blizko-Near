@@ -628,7 +628,7 @@ const CustomerMain = () => {
             </div>
             
             <div>
-              <h2 className="text-xl font-bold text-slate-900 mb-2">Ищем водителя...</h2>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">{getText(settings, 'searching_title')}...</h2>
               <p className="text-slate-500">{currentOrder?.address}, д. {currentOrder?.house_number}</p>
               {searchTimer > 0 && (
                 <p className="text-sm text-slate-400 mt-2">{formatTime(searchTimer)}</p>
