@@ -5,6 +5,7 @@ import { ArrowLeft, Phone, PhoneCall, Loader2, Check, FileText, X, Clock } from 
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 import { fetchPublicSettings } from '../lib/settingsCache';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -314,7 +315,7 @@ const CustomerAuth = () => {
             ) : step === 'phone' ? (
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900 mb-2">Вход для пассажира</h2>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'customer_auth_title')}</h2>
                   <p className="text-slate-500">Введите номер телефона для получения кода</p>
                 </div>
 

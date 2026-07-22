@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Delete, HelpCircle, Loader2, PhoneCall, Clock, Check } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
+import { fetchPublicSettings } from '../lib/settingsCache';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -24,6 +26,11 @@ const PinScreen = () => {
   const [callData, setCallData] = useState(null);
   const [callTimeLeft, setCallTimeLeft] = useState(0);
   const [callConfirmed, setCallConfirmed] = useState(false);
+  const [uiSettings, setUiSettings] = useState(null);
+
+  useEffect(() => {
+    fetchPublicSettings().then(setUiSettings).catch(() => {});
+  }, []);
 
   const phone = localStorage.getItem('taxi_pin_phone');
   const role = localStorage.getItem('taxi_pin_role');
@@ -412,7 +419,7 @@ const PinScreen = () => {
               className="flex items-center gap-2 text-sm text-slate-500 hover:text-green-600 transition-colors"
             >
               <HelpCircle className="w-4 h-4" />
-              <span>Забыли код? Восстановить через SMS</span>
+              <span>{getText(uiSettings, 'forgot_pin')}</span>
             </button>
             <button
               data-testid="switch-account-btn"

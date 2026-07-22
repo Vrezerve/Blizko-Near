@@ -5,6 +5,7 @@ import { Car, User, Shield, ChevronRight, Loader2 } from 'lucide-react';
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 import { fetchPublicSettings } from '../lib/settingsCache';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -177,7 +178,7 @@ const RoleSelect = () => {
                 </div>
                 <div className="text-left">
                   <p className="font-semibold text-slate-900">Войти как заказчик</p>
-                  <p className="text-sm text-slate-500">Вызвать такси</p>
+                  <p className="text-sm text-slate-500">{getText(settings, 'role_customer_subtitle')}</p>
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-green-600 transition-colors" />

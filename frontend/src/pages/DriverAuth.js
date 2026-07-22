@@ -5,6 +5,7 @@ import { ArrowLeft, Phone, PhoneCall, Loader2, Check, Car, User, X, Clock, Ban }
 import { AppLogo } from '../components/AppLogo';
 import axios from 'axios';
 import { fetchPublicSettings } from '../lib/settingsCache';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -335,7 +336,7 @@ const DriverAuth = () => {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Вход для водителя</h2>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'driver_auth_title')}</h2>
               <p className="text-slate-500">Введите номер телефона</p>
             </div>
 
@@ -356,10 +357,44 @@ const DriverAuth = () => {
 
             {error && <p className="text-red-500 text-sm">{error}</p>}
 
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  data-testid="driver-terms-checkbox"
+                  type="checkbox"
+                  checked={agreedTerms}
+                  onChange={(e) => setAgreedTerms(e.target.checked)}
+                  className="checkbox-custom mt-0.5"
+                />
+                <span className="text-sm text-slate-600">
+                  Принимаю{' '}
+                  <button type="button" onClick={() => setShowTerms(true)} className="text-green-600 underline">
+                    условия сервиса
+                  </button>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  data-testid="driver-privacy-checkbox"
+                  type="checkbox"
+                  checked={agreedPrivacy}
+                  onChange={(e) => setAgreedPrivacy(e.target.checked)}
+                  className="checkbox-custom mt-0.5"
+                />
+                <span className="text-sm text-slate-600">
+                  Даю{' '}
+                  <button type="button" onClick={() => setShowPrivacy(true)} className="text-green-600 underline">
+                    согласие на обработку данных
+                  </button>
+                </span>
+              </label>
+            </div>
+
             <button
               data-testid="driver-check-phone-btn"
               onClick={handleCheckPhone}
-              disabled={loading}
+              disabled={loading || !agreedTerms || !agreedPrivacy}
               className="btn-primary"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Продолжить'}
@@ -420,37 +455,9 @@ const DriverAuth = () => {
             </div>
 
             <div className="space-y-3">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  data-testid="driver-terms-checkbox"
-                  type="checkbox"
-                  checked={agreedTerms}
-                  onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="checkbox-custom mt-0.5"
-                />
-                <span className="text-sm text-slate-600">
-                  Принимаю{' '}
-                  <button type="button" onClick={() => setShowTerms(true)} className="text-green-600 underline">
-                    условия сервиса
-                  </button>
-                </span>
-              </label>
-
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  data-testid="driver-privacy-checkbox"
-                  type="checkbox"
-                  checked={agreedPrivacy}
-                  onChange={(e) => setAgreedPrivacy(e.target.checked)}
-                  className="checkbox-custom mt-0.5"
-                />
-                <span className="text-sm text-slate-600">
-                  Даю{' '}
-                  <button type="button" onClick={() => setShowPrivacy(true)} className="text-green-600 underline">
-                    согласие на обработку данных
-                  </button>
-                </span>
-              </label>
+              <p className="text-xs text-slate-500">
+                Условия сервиса и согласие на обработку данных приняты на предыдущем шаге.
+              </p>
             </div>
 
             {error && <p className="text-red-500 text-sm">{error}</p>}

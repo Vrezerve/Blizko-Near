@@ -164,7 +164,7 @@ class UserResponse(BaseModel):
 
 class OrderCreate(BaseModel):
     address: str
-    house_number: str
+    house_number: Optional[str] = ""
 
 class OrderResponse(BaseModel):
     id: str
@@ -1435,14 +1435,44 @@ async def get_my_orders(user: dict = Depends(get_current_user)):
         orders = await db.orders.find({"driver_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return orders
 
+async def expire_stale_pending_orders():
+    """Auto-cancel pending orders that nobody accepted within the configured window."""
+    settings = await db.settings.find_one({"id": "main"}, {"order_auto_cancel_minutes": 1})
+    minutes = int((settings or {}).get("order_auto_cancel_minutes") or 15)
+    if minutes <= 0:
+        return
+    now = datetime.now(timezone.utc)
+    threshold = (now - timedelta(minutes=minutes)).isoformat()
+    r = await db.orders.update_many(
+        {"status": "pending", "created_at": {"$lt": threshold}},
+        {"$set": {"status": "cancelled", "cancelled_by": "timeout", "cancelled_at": now.isoformat()}}
+    )
+    if r.modified_count:
+        await system_log("info", "orders", f"Автоотмена заказов без исполнителя: {r.modified_count} (лимит {minutes} мин)")
+
 @orders_router.get("/my-active")
 async def get_my_active_order(user: dict = Depends(get_current_user)):
     """Get customer's current active order (for polling)"""
+    await expire_stale_pending_orders()
     order = await db.orders.find_one(
         {"customer_id": user["id"], "status": {"$in": ["pending", "accepted"]}},
         {"_id": 0}
     )
     if not order:
+        # Return a recently finished order so the client can show the final state
+        recent = await db.orders.find_one(
+            {"customer_id": user["id"], "status": {"$in": ["completed", "cancelled", "problem"]}},
+            {"_id": 0},
+            sort=[("created_at", -1)]
+        )
+        if recent:
+            finished_at = recent.get("completed_at") or recent.get("cancelled_at") or recent.get("created_at")
+            try:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(finished_at)).total_seconds()
+                if age < 180:
+                    return recent
+            except Exception:
+                pass
         return {"status": "none"}
     
     # If accepted, add driver location
@@ -1488,6 +1518,7 @@ async def get_order_history(user: dict = Depends(get_current_user)):
 
 @orders_router.get("/active")
 async def get_active_orders(user: dict = Depends(get_current_user)):
+    await expire_stale_pending_orders()
     if user["role"] == "customer":
         order = await db.orders.find_one({
             "customer_id": user["id"],
@@ -1495,6 +1526,8 @@ async def get_active_orders(user: dict = Depends(get_current_user)):
         }, {"_id": 0})
         return order
     elif user["role"] == "driver":
+        # Heartbeat: driver app polls this endpoint — track real presence
+        await db.users.update_one({"id": user["id"]}, {"$set": {"last_seen_at": datetime.now(timezone.utc).isoformat()}})
         # Return driver's current order if busy
         if user.get("is_busy"):
             order = await db.orders.find_one({
@@ -1744,7 +1777,7 @@ async def toggle_ready(user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Водитель не активирован")
     
     new_status = not user.get("is_online", False)
-    await db.users.update_one({"id": user["id"]}, {"$set": {"is_online": new_status}})
+    await db.users.update_one({"id": user["id"]}, {"$set": {"is_online": new_status, "last_seen_at": datetime.now(timezone.utc).isoformat()}})
     
     await log_action("driver_status_change", user["id"], {"is_online": new_status})
     
@@ -1752,15 +1785,19 @@ async def toggle_ready(user: dict = Depends(get_current_user)):
 
 @drivers_router.get("/stats")
 async def get_driver_stats():
-    online_count = await db.users.count_documents({"role": "driver", "is_online": True, "is_activated": True})
-    busy_count = await db.users.count_documents({"role": "driver", "is_online": True, "is_busy": True})
+    # Consider online only drivers whose app was active in the last 2 minutes
+    threshold = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
+    presence = {"role": "driver", "is_online": True, "is_activated": True, "last_seen_at": {"$gte": threshold}}
+    online_count = await db.users.count_documents(presence)
+    busy_count = await db.users.count_documents({**presence, "is_busy": True})
     return {"online": online_count, "busy": busy_count, "available": online_count - busy_count}
 
 @drivers_router.get("/online-locations")
 async def get_online_driver_locations(user: dict = Depends(get_admin_user)):
     """Get all online drivers with their locations for admin map"""
+    threshold = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
     drivers = await db.users.find(
-        {"role": "driver", "is_online": True, "is_activated": True},
+        {"role": "driver", "is_online": True, "is_activated": True, "last_seen_at": {"$gte": threshold}},
         {"_id": 0, "id": 1, "name": 1, "phone": 1, "car_model": 1, "car_number": 1, "location": 1, "is_busy": 1}
     ).to_list(100)
     return drivers
@@ -2342,6 +2379,22 @@ async def test_smtp(user: dict = Depends(get_admin_user)):
     else:
         raise HTTPException(status_code=500, detail="Не удалось отправить. Проверьте SMTP-настройки в логах.")
 
+@api_router.post("/logs/client")
+async def log_client_event(data: dict, request: Request):
+    """Receive browser-side errors / slow-load reports and store in system logs."""
+    level = data.get("level") if data.get("level") in ("error", "warning", "info") else "error"
+    message = str(data.get("message") or "")[:500]
+    if not message:
+        return {"success": False}
+    await system_log(level, "browser", message, {
+        "url": str(data.get("url") or "")[:200],
+        "source": str(data.get("source") or "")[:200],
+        "ua": str(data.get("ua") or "")[:200],
+        "duration_ms": data.get("duration_ms"),
+        "ip": get_client_ip(request),
+    })
+    return {"success": True}
+
 @api_router.post("/notifications/test-self")
 async def notify_test_self(user: dict = Depends(get_current_user)):
     """Send a test push to the current user (any role). Helps verify subscription."""
@@ -2579,6 +2632,10 @@ async def get_public_settings():
         "auth_slides_autoplay": settings.get("auth_slides_autoplay", True),
         "auth_slides_interval": settings.get("auth_slides_interval", 5),
         "show_fuel_stations": settings.get("show_fuel_stations", False),
+        "seo_title": settings.get("seo_title", ""),
+        "seo_description": settings.get("seo_description", ""),
+        "ui_texts": settings.get("ui_texts", {}),
+        "address_suggestions_enabled": settings.get("address_suggestions_enabled", False),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),

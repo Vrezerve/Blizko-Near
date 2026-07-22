@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 27 backend + frontend testing complete. Backend pytest: 9/10 PASS. Frontend UI + realtime E2E: 8/8 PASS. Found 1 CRITICAL backend bug: POST /api/settings/ silently drops the new fields (seo_title, seo_description, ui_texts, address_suggestions_enabled, order_auto_cancel_minutes) because they are missing from the SettingsUpdate Pydantic model. All other new features work: public settings expose new fields, /api/logs/client works no-auth, orders/create accepts empty/missing house_number, auto-cancel via expire_stale_pending_orders sets cancelled_by='timeout', my-active returns recently finished order (<3 min) then {status:none}, drivers/stats correctly excludes stale online drivers (>120s), heartbeat via GET /api/orders/active updates last_seen_at, full E2E order flow (customer create -> driver accept -> customer sees accepted with driver_name -> complete) works. Frontend: landing 'Найти поездку' subtitle present, /auth/customer heading OK, /auth/driver has 2 checkboxes and Продолжить disabled until both checked, /auth/pin shows 'Забыли код? Восстановить' (без 'через SMS'), /customer shows 'Адрес и номер дома' + 'Уточнение' + 'Разместить заказ' with NO address dropdown, order created without 'Уточнение' works. CRITICAL REALTIME FIX VERIFIED: customer stays on /customer, order gets accepted via API, screen transitions to 'Исполнитель найден!' with 'Позвонить исполнителю' button within ~500ms of polling; after complete via API, screen transitions to 'Поездка завершена' without reload. Admin /admin/login -> Настройки shows 'Тексты интерфейса' block (12 ui-text-* fields), settings-seo-title, settings-seo-description, settings-address-suggestions, settings-auto-cancel-minutes present. Backend URL: https://order-sync-platform-1.preview.emergentagent.com. NOTE: because of the SettingsUpdate bug, saving from admin panel will show 'saved' toast but new fields will NOT actually persist — need to fix Pydantic model before admin can meaningfully edit these values.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/settings/",
+        "issue": "SettingsUpdate Pydantic model (server.py L192-248) is missing the new fields seo_title, seo_description, ui_texts, address_suggestions_enabled, order_auto_cancel_minutes. Pydantic v2 default ignores extra fields, so admin POSTs with these keys return 200 but the values are silently dropped and never written to Mongo. Verified: POST {seo_title:'X', ui_texts:{k:'V'}, address_suggestions_enabled:true, order_auto_cancel_minutes:17} -> settings/public still returns '' / {} / false and admin settings/ still returns null for order_auto_cancel_minutes.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CustomerMain.js",
+        "issue": "Hardcoded 'Ищем водителя...' at line 631 does NOT use getText(settings,'searching_title'). Admin cannot override this text via ui_texts.searching_title as intended by UI_TEXT_DEFS. Also references 'водителя' while the rest of the app uses 'исполнитель'.",
+        "selector": "h2 in searching case block",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration27_taxi.py",
+    "/app/test_reports/pytest/iteration27_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: Add missing fields to SettingsUpdate Pydantic model in /app/backend/server.py L192-248: seo_title: Optional[str]=None; seo_description: Optional[str]=None; ui_texts: Optional[Dict[str, str]]=None; address_suggestions_enabled: Optional[bool]=None; order_auto_cancel_minutes: Optional[int]=None. (Alternatively: add model_config = ConfigDict(extra='allow') to accept arbitrary keys, but explicit fields are safer.)",
+    "MINOR: In /app/frontend/src/pages/CustomerMain.js L631 replace hardcoded 'Ищем водителя...' with {getText(settings, 'searching_title')}... to make it admin-editable and consistent (should use 'исполнителя' per UI_TEXT_DEFS default 'Ищем исполнителя')."
+  ],
+  "critical_code_review_comments": [
+    "SettingsUpdate model must be kept in sync with settings/public whenever new admin-editable fields are introduced — the current pattern of freely reading settings.get(...) in settings/public but relying on a strict Pydantic model in POST is error-prone. Consider using model_config = ConfigDict(extra='allow') or a dict-based endpoint.",
+    "AdminPanel.js is 3372 lines — should be split (>700 line rule).",
+    "server.py is 3077 lines — should be split into routers/services modules.",
+    "CustomerMain.js:280-360 uses orderStateRef to fix stale closure in pollOrderStatus — the fix is confirmed working via realtime E2E test. Good pattern.",
+    "GET /api/logs/client stores 'source' from data.get('source') separately from category, but the category is hardcoded to 'browser' via system_log(..., 'browser', ...). Review request mentions category/source='browser' — verified source='browser' on stored record. Consistent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration27_taxi.py (created — 10 pytest test cases)"
+  ],
+  "success_rate": {"backend": "90% (9/10 pytest)", "frontend": "100% (8/8 UI + realtime E2E)"},
+  "test_credentials": "admin@taxi.local / admin123. Customer +79001234567, Driver +79007654321. JWT direct generation used as fallback since /api/auth/send-code requires device_id.",
+  "seed_data_creation": "Created TEST Customer Iter27 (+79001234567) and TEST Driver Iter27 (+79007654321) users via Mongo if not present. Driver: is_activated=True, is_online=True, is_busy=False, last_seen_at recent, car_model='Lada Vesta', car_number='A123BC77'. All TEST_ITER27_* orders auto-cancelled by tests. Admin settings reset to defaults (seo/ui_texts empty, address_suggestions_enabled=false, order_auto_cancel_minutes=15) — but note: due to the bug, POST didn't actually change anything from prior state anyway.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Only one backend regression remains: SettingsUpdate model missing new fields. Fix is trivial (5 new Optional fields). After fix, re-run /app/backend/tests/test_iteration27_taxi.py::TestAdminSettingsPersistence::test_post_new_fields_persist — should go green. All other tests already pass. For frontend, the realtime accept/complete polling fix (orderStateRef) is confirmed working; TEST6a/6b/6c may be re-run if any changes are made to CustomerMain.js pollOrderStatus. Use test JWTs: CUSTOMER_ID=0cd99d52-8ad1-4077-81ef-c0aa1048754b, DRIVER_ID=076c5f0b-9b76-45d1-8fdb-771335f7e57f. Note that POST /api/orders/complete/{id} has a 2-minute minimum after accept — tests bypass by backdating accepted_at in Mongo. Also note POST /api/orders/create has a 3-min cooldown after cancelled_by='customer_after_accept' (BLOCKED:N error) — tests clear this by backdating cancelled_at.",
+  "rca of the issue": "Root cause of settings persistence bug: When new admin-editable fields (seo_title, seo_description, ui_texts as dict, address_suggestions_enabled, order_auto_cancel_minutes) were added to /api/settings/public (server.py L2635-2638) and to the AdminPanel UI (frontend testids ui-text-*, settings-seo-*, settings-address-suggestions, settings-auto-cancel-minutes), the SettingsUpdate Pydantic model at server.py L192-248 was not updated. FastAPI validates the request body against this model and Pydantic v2 silently drops unknown keys by default. The endpoint at L2573 uses `data.model_dump()` which only contains the declared fields, so the new keys never reach `db.settings.update_one($set)`. FIX: Add these Optional fields to SettingsUpdate: `seo_title: Optional[str] = None`, `seo_description: Optional[str] = None`, `ui_texts: Optional[Dict[str, str]] = None`, `address_suggestions_enabled: Optional[bool] = None`, `order_auto_cancel_minutes: Optional[int] = None`. Add `Dict` to imports from typing if not present."
+}

@@ -12,6 +12,7 @@ import FabBar from '../components/FabBar';
 import TopBar from '../components/TopBar';
 import { PushCheckMenuItem } from '../components/PushCheckMenuItem';
 import { initSoundUnlock, playSuccessSound, showLocalNotification } from '../lib/soundAlert';
+import { getText } from '../lib/uiTexts';
 
 const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
@@ -202,8 +203,12 @@ const CustomerMain = () => {
   
   const wsRef = useRef(null);
   const noDriverTimerRef = useRef(null);
+
+  // Keep a live ref of orderState — polling callbacks must not use stale closures
+  useEffect(() => { orderStateRef.current = orderState; }, [orderState]);
   const locationTrackingRef = useRef(null);
   const lastOrderStatusRef = useRef(null);
+  const orderStateRef = useRef('idle');
 
   useEffect(() => {
     if (!user || user.role !== 'customer') {
@@ -275,20 +280,32 @@ const CustomerMain = () => {
     const pollOrderStatus = async () => {
       try {
         const res = await api('GET', '/orders/my-active');
-        if (!res || res.status === 'none') { lastOrderStatusRef.current = null; return; }
+        if (!res || res.status === 'none') {
+          // Order disappeared (auto-cancelled by timeout or cancelled elsewhere)
+          if (orderStateRef.current === 'searching') {
+            lastOrderStatusRef.current = null;
+            clearTimeout(noDriverTimerRef.current);
+            setOrderState('idle');
+            setCurrentOrder(null);
+            setNoDriverTimer(0);
+            setError('Исполнитель не найден. Попробуйте разместить заказ ещё раз.');
+          }
+          lastOrderStatusRef.current = null;
+          return;
+        }
 
         // Sound alerts on status transitions (in-app notifications, no push needed)
         const prevStatus = lastOrderStatusRef.current;
         if (prevStatus === 'pending' && res.status === 'accepted') {
           playSuccessSound();
-          showLocalNotification('Водитель найден', res.driver_name ? `${res.driver_name} едет к вам` : 'Водитель едет к вам');
+          showLocalNotification('Исполнитель найден', res.driver_name ? `${res.driver_name} уже в пути` : 'Исполнитель уже в пути');
         } else if (prevStatus === 'accepted' && res.status === 'completed') {
           playSuccessSound();
           showLocalNotification('Поездка завершена', 'Спасибо, что воспользовались сервисом!');
         }
         lastOrderStatusRef.current = res.status;
 
-        if (res.status === 'accepted' && orderState === 'searching') {
+        if (res.status === 'accepted' && orderStateRef.current === 'searching') {
           setCurrentOrder(res);
           setOrderState('found');
           clearTimeout(noDriverTimerRef.current);
@@ -306,15 +323,33 @@ const CustomerMain = () => {
           if (res.eta_minutes) {
             setEtaMinutes(res.eta_minutes);
           }
-        } else if (res.status === 'accepted' && orderState === 'found') {
+        } else if (res.status === 'accepted' && orderStateRef.current === 'found') {
           // Update driver location
           if (res.driver_location) {
             setDriverLocation(res.driver_location);
           }
-        } else if (res.status === 'completed') {
+        } else if (res.status === 'completed' && (orderStateRef.current === 'found' || orderStateRef.current === 'searching')) {
           setOrderState('completed');
           stopDriverTracking();
-          setTimeout(() => { setOrderState('idle'); setCurrentOrder(null); setDriverLocation(null); setDriverInfo(null); setEtaMinutes(null); }, 3000);
+          clearTimeout(noDriverTimerRef.current);
+          setTimeout(() => { setOrderState('idle'); setCurrentOrder(null); setDriverLocation(null); setDriverInfo(null); setEtaMinutes(null); lastOrderStatusRef.current = null; }, 4000);
+        } else if (res.status === 'cancelled' && (orderStateRef.current === 'found' || orderStateRef.current === 'searching')) {
+          const wasSearching = orderStateRef.current === 'searching';
+          stopDriverTracking();
+          clearTimeout(noDriverTimerRef.current);
+          setOrderState('idle');
+          setCurrentOrder(null);
+          setDriverLocation(null);
+          setDriverInfo(null);
+          setEtaMinutes(null);
+          setNoDriverTimer(0);
+          lastOrderStatusRef.current = null;
+          if (res.cancelled_by === 'timeout') {
+            setError('Исполнитель не найден. Попробуйте разместить заказ ещё раз.');
+          } else if (!wasSearching) {
+            playSuccessSound();
+            setError('Исполнитель отменил заказ. Попробуйте разместить заказ ещё раз.');
+          }
         }
       } catch (e) {}
     };
@@ -379,8 +414,13 @@ const CustomerMain = () => {
     } catch (e) {}
   };
 
-  // Forward geocode: text → suggestions
+  // Forward geocode: text → suggestions (can be disabled from admin panel)
   const fetchSuggestions = async (query) => {
+    if (settings?.address_suggestions_enabled !== true) {
+      setAddressSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
     if (!settings?.yandex_map_api_key || query.length < 3) {
       setAddressSuggestions([]);
       return;
@@ -431,8 +471,8 @@ const CustomerMain = () => {
       return;
     }
 
-    if (!address.trim() || !houseNumber.trim()) {
-      setError('Заполните адрес и номер дома');
+    if (!address.trim()) {
+      setError('Укажите адрес');
       return;
     }
 
@@ -450,7 +490,7 @@ const CustomerMain = () => {
       setSearchTimer(120);
       
       noDriverTimerRef.current = setTimeout(() => {
-        if (orderState === 'searching') {
+        if (orderStateRef.current === 'searching') {
           setNoDriverTimer(60);
         }
       }, 120000);
@@ -637,11 +677,11 @@ const CustomerMain = () => {
             <div className="text-center">
               <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-full mb-3">
                 <CheckCircle className="w-5 h-5" />
-                <span className="font-medium">Водитель найден!</span>
+                <span className="font-medium">{getText(settings, 'driver_found')}!</span>
               </div>
-              <p className="text-slate-500 text-sm">{currentOrder?.address}{currentOrder?.house_number ? `, д. ${currentOrder.house_number}` : ''}</p>
+              <p className="text-slate-500 text-sm">{currentOrder?.address}{currentOrder?.house_number ? `, ${currentOrder.house_number}` : ''}</p>
               {(currentOrder?.eta_minutes || etaMinutes) && (
-                <p className="text-lg font-bold text-slate-900 mt-1">Приедет через ~{currentOrder?.eta_minutes || etaMinutes} мин</p>
+                <p className="text-lg font-bold text-slate-900 mt-1">{getText(settings, 'eta_prefix')} ~{currentOrder?.eta_minutes || etaMinutes} мин</p>
               )}
             </div>
 
@@ -664,7 +704,7 @@ const CustomerMain = () => {
               className="btn-primary"
             >
               <Phone className="w-5 h-5" />
-              Позвонить водителю
+              {getText(settings, 'call_driver_btn')}
             </a>
 
             <button
@@ -701,7 +741,7 @@ const CustomerMain = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Адрес подачи</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{getText(settings, 'address_label')}</label>
                 <div className="relative">
                   <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 z-10" />
                   <input
@@ -734,14 +774,14 @@ const CustomerMain = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Номер дома / уточнение</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{getText(settings, 'house_label')}</label>
                 <input
                   data-testid="house-input"
                   type="text"
                   value={houseNumber}
                   onChange={(e) => setHouseNumber(e.target.value)}
                   className="input-field"
-                  placeholder="1А, подъезд 2"
+                  placeholder={getText(settings, 'house_placeholder')}
                 />
               </div>
             </div>
@@ -780,7 +820,7 @@ const CustomerMain = () => {
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                 <>
                   <Navigation className="w-5 h-5" />
-                  Вызвать машину
+                  {getText(settings, 'create_order_btn')}
                 </>
               )}
             </button>

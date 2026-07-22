@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'sonner';
 import axios from 'axios';
 import { fetchPublicSettings } from './lib/settingsCache';
+import { initClientLogging } from './lib/clientLog';
 
 import RoleSelect from './pages/RoleSelect';
 import CustomerAuth from './pages/CustomerAuth';
@@ -36,7 +37,21 @@ axios.defaults.timeout = 15000;
 // Load map CSS vars from settings
 const MapStyleLoader = () => {
   useEffect(() => {
+    initClientLogging();
     fetchPublicSettings().then(s => {
+      // SEO: title & meta description (editable from admin)
+      const title = (s.seo_title || '').trim() || s.app_name;
+      if (title) document.title = title;
+      const desc = (s.seo_description || '').trim();
+      if (desc) {
+        let meta = document.querySelector('meta[name="description"]');
+        if (!meta) {
+          meta = document.createElement('meta');
+          meta.setAttribute('name', 'description');
+          document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', desc);
+      }
       const root = document.documentElement;
       const toAbs = (u) => (u && u.startsWith('/')) ? `${process.env.REACT_APP_BACKEND_URL}${u}` : u;
       if (s.map_bg_color) root.style.setProperty('--map-bg-color', s.map_bg_color);

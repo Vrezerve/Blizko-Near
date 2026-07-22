@@ -394,7 +394,9 @@ const DriverMain = () => {
               <div>
                 <p className="text-sm text-slate-500">Адрес</p>
                 <p className="font-semibold text-slate-900">{currentOrder.address}</p>
-                <p className="text-lg font-bold text-green-600">д. {currentOrder.house_number}</p>
+                {currentOrder.house_number && (
+                  <p className="text-lg font-bold text-green-600">{currentOrder.house_number}</p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-slate-500">Телефон клиента</p>
@@ -786,7 +788,7 @@ const DriverMain = () => {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <p className="font-medium text-slate-900">{order.address}</p>
-                          <p className="text-sm text-slate-500">д. {order.house_number}</p>
+                          {order.house_number && <p className="text-sm text-slate-500">{order.house_number}</p>}
                         </div>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                           {order.status === 'completed' ? 'Завершён' :

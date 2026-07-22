@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import YandexMap from '../components/YandexMap';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { UI_TEXT_DEFS } from '../lib/uiTexts';
 
 // Admin Map Component showing online drivers
 const AdminMap = ({ drivers, onDriverClick, apiKey }) => {
@@ -1411,6 +1412,29 @@ const AdminPanel = () => {
               placeholder="Рядом"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO: Заголовок (Title)</label>
+            <input
+              data-testid="settings-seo-title"
+              type="text"
+              value={settings.seo_title || ''}
+              onChange={(e) => setSettings({...settings, seo_title: e.target.value})}
+              className="input-field"
+              placeholder="Такси Рядом — быстрая подача"
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO: Описание (Description)</label>
+            <textarea
+              data-testid="settings-seo-description"
+              value={settings.seo_description || ''}
+              onChange={(e) => setSettings({...settings, seo_description: e.target.value})}
+              className="input-field min-h-[70px]"
+              placeholder="Краткое описание сервиса для поисковиков (150-160 символов)"
+            />
+          </div>
           
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Иконка приложения</label>
@@ -2232,6 +2256,61 @@ const AdminPanel = () => {
                   </label>
                 );
               })}
+            </div>
+          </div>
+        </div>
+
+        {/* UI Texts (editable) */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-1">Тексты интерфейса</h3>
+          <p className="text-sm text-slate-500 mb-4">Меняйте надписи в приложении без программиста. Пустое поле = текст по умолчанию (показан как подсказка).</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {UI_TEXT_DEFS.map((t) => (
+              <div key={t.key}>
+                <label className="block text-sm font-medium text-slate-700 mb-2">{t.label}</label>
+                <input
+                  type="text"
+                  data-testid={`ui-text-${t.key}`}
+                  value={(settings.ui_texts || {})[t.key] || ''}
+                  onChange={(e) => setSettings({ ...settings, ui_texts: { ...(settings.ui_texts || {}), [t.key]: e.target.value } })}
+                  className="input-field"
+                  placeholder={t.def}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Orders behaviour */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-4">Заказы и адрес</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-slate-900">Подсказки адреса при вводе</p>
+                <p className="text-sm text-slate-500">Выпадающий список с вариантами адресов под полем ввода</p>
+              </div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  data-testid="settings-address-suggestions"
+                  checked={settings.address_suggestions_enabled === true}
+                  onChange={(e) => setSettings({...settings, address_suggestions_enabled: e.target.checked})}
+                  className="checkbox-custom"
+                />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Автоотмена заказа без исполнителя (минуты)</label>
+              <input
+                type="number"
+                min="0"
+                data-testid="settings-auto-cancel-minutes"
+                value={settings.order_auto_cancel_minutes ?? 15}
+                onChange={(e) => setSettings({...settings, order_auto_cancel_minutes: parseInt(e.target.value || '0', 10)})}
+                className="input-field max-w-[200px]"
+              />
+              <p className="text-xs text-slate-400 mt-1">Если никто не принял заказ за это время — он отменится автоматически, заказчик увидит «Исполнитель не найден». 0 — отключить.</p>
             </div>
           </div>
         </div>
