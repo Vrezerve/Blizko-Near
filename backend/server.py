@@ -2615,7 +2615,7 @@ async def update_settings(data: SettingsUpdate, user: dict = Depends(get_admin_u
     
     # Apply SEO to static index.html (visible in page source)
     fresh = await db.settings.find_one({"id": "main"}) or {}
-    seo_title = (fresh.get("app_name") or "").strip()
+    seo_title = (fresh.get("seo_title") or "").strip() or (fresh.get("app_name") or "").strip()
     seo_desc = (fresh.get("seo_description") or "").strip()
     apply_seo_to_index_html(seo_title, seo_desc)
     

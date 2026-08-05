@@ -171,3 +171,6 @@ React + TailwindCSS + Shadcn, FastAPI, MongoDB, JWT + PIN + OTP, WebSockets, Yan
 - [x] Fab-бар «Главная кнопка»: первая зелёная кнопка «Поездки» (fab_main_enabled/fab_main_label в settings, дефолт вкл/«Поездки»), всегда активна, ничего не делает; настройка в админке → Fab-бар (переименовать/отключить); FabBar.jsx грузит через settingsCache
 - [x] SEO в исходный код страницы: при сохранении настроек бэкенд патчит <title> и meta description в /app/frontend/public/index.html и build/index.html (apply_seo_to_index_html, title = seo_title || app_name). В dev нужен рестарт фронта (сделан), в проде статика применяется сразу. Runtime document.title тоже работает
 - [x] SEO уточнение: Title в index.html = «Название приложения» (app_name), Description = «SEO: Описание». Поле «SEO: Заголовок» убрано из админки (seo_title больше не используется). В dev title в page source обновляется после рестарта фронта; runtime document.title — сразу
+- [x] Возвращено поле «SEO: Заголовок (Title)» в админку (Title = seo_title || app_name); подсказка под «Название приложения»
+- [x] Проверено: смена app_name применяется на фронте (лого «Рядом11», title вкладки) — работало корректно, «статичным» был лишь исходный HTML в dev до рестарта фронта
+- [x] Создан /app/README.md — полное описание проекта (стек, роли, возможности, структура, API, брендинг/SEO, уведомления, запуск)

@@ -39,8 +39,9 @@ const MapStyleLoader = () => {
   useEffect(() => {
     initClientLogging();
     fetchPublicSettings().then(s => {
-      // SEO: title из названия приложения, description из настроек
-      if (s.app_name) document.title = s.app_name;
+      // SEO: title = SEO-заголовок или название приложения, description из настроек
+      const pageTitle = (s.seo_title || '').trim() || s.app_name;
+      if (pageTitle) document.title = pageTitle;
       const desc = (s.seo_description || '').trim();
       if (desc) {
         let meta = document.querySelector('meta[name="description"]');

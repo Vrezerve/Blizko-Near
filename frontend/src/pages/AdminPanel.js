@@ -1455,7 +1455,19 @@ const AdminPanel = () => {
               className="input-field"
               placeholder="Рядом"
             />
-            <p className="text-xs text-slate-400 mt-1">Используется и как заголовок страницы (Title) в коде сайта</p>
+            <p className="text-xs text-slate-400 mt-1">Показывается в шапке приложения. Если «SEO: Заголовок» пуст — используется и как Title страницы</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">SEO: Заголовок (Title)</label>
+            <input
+              data-testid="settings-seo-title"
+              type="text"
+              value={settings.seo_title || ''}
+              onChange={(e) => setSettings({...settings, seo_title: e.target.value})}
+              className="input-field"
+              placeholder="Если пусто — используется название приложения"
+            />
           </div>
 
           <div className="md:col-span-2">
