@@ -255,6 +255,9 @@ class SettingsUpdate(BaseModel):
     address_suggestions_enabled: Optional[bool] = None
     # Auto-cancel pending orders without a driver (minutes, 0 = disabled)
     order_auto_cancel_minutes: Optional[int] = None
+    # Fab-bar main button (always active, does nothing)
+    fab_main_enabled: Optional[bool] = None
+    fab_main_label: Optional[str] = None
 
 class AdminLogin(BaseModel):
     email: str
@@ -2579,6 +2582,25 @@ async def get_settings(user: dict = Depends(get_admin_user)):
         settings = {"id": "main"}
     return settings
 
+def apply_seo_to_index_html(title: str, description: str):
+    """Patch static index.html so title/description are visible in page source too."""
+    import re as _re
+    from html import escape as _esc
+    for path in ["/app/frontend/public/index.html", "/app/frontend/build/index.html"]:
+        try:
+            if not os.path.exists(path):
+                continue
+            with open(path, encoding="utf-8") as f:
+                html = f.read()
+            if title:
+                html = _re.sub(r"<title>.*?</title>", f"<title>{_esc(title)}</title>", html, flags=_re.S)
+            if description:
+                html = _re.sub(r'<meta\s+name="description"\s+content=".*?"\s*/?>', f'<meta name="description" content="{_esc(description, quote=True)}"/>', html)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+        except Exception:
+            pass
+
 @settings_router.post("/")
 async def update_settings(data: SettingsUpdate, user: dict = Depends(get_admin_user)):
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
@@ -2590,6 +2612,12 @@ async def update_settings(data: SettingsUpdate, user: dict = Depends(get_admin_u
         {"$set": update_data},
         upsert=True
     )
+    
+    # Apply SEO to static index.html (visible in page source)
+    fresh = await db.settings.find_one({"id": "main"}) or {}
+    seo_title = (fresh.get("seo_title") or "").strip() or (fresh.get("app_name") or "").strip()
+    seo_desc = (fresh.get("seo_description") or "").strip()
+    apply_seo_to_index_html(seo_title, seo_desc)
     
     await log_action("settings_updated", user["id"], {"fields": list(update_data.keys())})
     
@@ -2645,6 +2673,8 @@ async def get_public_settings():
         "seo_description": settings.get("seo_description", ""),
         "ui_texts": settings.get("ui_texts", {}),
         "address_suggestions_enabled": settings.get("address_suggestions_enabled", False),
+        "fab_main_enabled": settings.get("fab_main_enabled", True),
+        "fab_main_label": settings.get("fab_main_label", "Поездки"),
         "terms_text": settings.get("terms_text", "Условия использования сервиса..."),
         "privacy_text": settings.get("privacy_text", "Политика конфиденциальности..."),
         "customer_rules_text": settings.get("customer_rules_text", "Правила для пассажиров..."),

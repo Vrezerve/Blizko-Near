@@ -346,7 +346,11 @@ const AdminPanel = () => {
           setSystemLogs(sysLogsData);
           break;
         case 'fabbar':
-          const fabData = await api('GET', '/admin/fab-buttons');
+          const [fabData, fabSettings] = await Promise.all([
+            api('GET', '/admin/fab-buttons'),
+            api('GET', '/settings/')
+          ]);
+          setSettings(fabSettings);
           setFabButtons(fabData);
           break;
         case 'profile':
@@ -2504,6 +2508,43 @@ const AdminPanel = () => {
           >
             <Plus className="w-4 h-4 mr-2" /> Добавить
           </button>
+        </div>
+
+        {/* Main button settings */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-lg font-semibold text-slate-900 mb-1">Главная кнопка</h3>
+          <p className="text-sm text-slate-500 mb-4">Первая кнопка fab-бара. Всегда активна и ничего не делает — просто показывает текущий экран. Можно переименовать или отключить.</p>
+          <div className="flex flex-col md:flex-row md:items-end gap-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                data-testid="fab-main-enabled"
+                checked={settings.fab_main_enabled !== false}
+                onChange={(e) => setSettings({ ...settings, fab_main_enabled: e.target.checked })}
+                className="checkbox-custom"
+              />
+              <span className="text-sm text-slate-700">Показывать</span>
+            </div>
+            <div className="flex-1 max-w-xs">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Название</label>
+              <input
+                type="text"
+                maxLength={20}
+                data-testid="fab-main-label"
+                value={settings.fab_main_label ?? 'Поездки'}
+                onChange={(e) => setSettings({ ...settings, fab_main_label: e.target.value })}
+                className="input-field"
+                placeholder="Поездки"
+              />
+            </div>
+            <button
+              onClick={handleSaveSettings}
+              className="btn-primary max-w-[200px]"
+              data-testid="fab-main-save"
+            >
+              Сохранить
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">

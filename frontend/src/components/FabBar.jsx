@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { X } from 'lucide-react';
+import { X, Car } from 'lucide-react';
+import { fetchPublicSettings } from '../lib/settingsCache';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -14,6 +15,7 @@ const DefaultIcon = ({ size = 22, color = 'currentColor' }) => (
 
 const FabBar = ({ role }) => {
   const [buttons, setButtons] = useState([]);
+  const [mainBtn, setMainBtn] = useState(null); // { enabled, label }
   const [openBtn, setOpenBtn] = useState(null);
   const fetchedRef = useRef(false);
 
@@ -24,6 +26,9 @@ const FabBar = ({ role }) => {
       .get(`${API}/settings/fab-buttons`, { params: { role } })
       .then((res) => setButtons(res.data || []))
       .catch(() => setButtons([]));
+    fetchPublicSettings()
+      .then((s) => setMainBtn({ enabled: s.fab_main_enabled !== false, label: s.fab_main_label || 'Поездки' }))
+      .catch(() => setMainBtn({ enabled: true, label: 'Поездки' }));
   }, [role]);
 
   const renderIcon = (svgText) => {
@@ -38,11 +43,22 @@ const FabBar = ({ role }) => {
     return <DefaultIcon />;
   };
 
-  if (!buttons.length) return null;
+  const showMain = mainBtn?.enabled;
+  if (!buttons.length && !showMain) return null;
 
   return (
     <>
       <div className="fab-bar" data-testid="fab-bar">
+        {showMain && (
+          <button
+            type="button"
+            className="fab-btn fab-btn-primary"
+            data-testid="fab-main-btn"
+          >
+            <Car size={22} />
+            <span className="fab-label">{mainBtn.label}</span>
+          </button>
+        )}
         {buttons.slice(0, 4).map((b) => (
           <button
             key={b.id}
