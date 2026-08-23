@@ -23,6 +23,10 @@ export const UI_TEXT_GROUPS = [
       { key: 'pin_enter_title', label: 'Заголовок ввода PIN', def: 'Введите код' },
       { key: 'forgot_pin', label: 'Ссылка «Забыли код»', def: 'Забыли код? Восстановить' },
       { key: 'switch_account', label: 'Ссылка «Другой аккаунт»', def: 'Другой аккаунт' },
+      { key: 'agree_terms_link', label: 'Ссылка «условия сервиса» (чекбокс)', def: 'условия сервиса' },
+      { key: 'agree_privacy_link', label: 'Ссылка «согласие на обработку» (чекбокс)', def: 'согласие на обработку персональных данных' },
+      { key: 'modal_terms_title', label: 'Заголовок окна условий сервиса', def: 'Условия сервиса' },
+      { key: 'modal_privacy_title', label: 'Заголовок окна согласия', def: 'Согласие на обработку персональных данных' },
     ],
   },
   {
@@ -38,6 +42,8 @@ export const UI_TEXT_GROUPS = [
       { key: 'create_order_btn', label: 'Кнопка создания заказа', def: 'Разместить заказ' },
       { key: 'stats_free', label: 'Счётчик «Свободно»', def: 'Свободно' },
       { key: 'stats_busy', label: 'Счётчик «Занято»', def: 'Занято' },
+      { key: 'customer_rules_link', label: 'Ссылка «правилами для заказчика» (чекбокс)', def: 'правилами для заказчика' },
+      { key: 'customer_rules_modal_title', label: 'Заголовок окна правил заказчика', def: 'Правила для заказчика' },
     ],
   },
   {
@@ -57,8 +63,11 @@ export const UI_TEXT_GROUPS = [
   {
     group: 'Экран исполнителя',
     items: [
-      { key: 'driver_go_online', label: 'Кнопка «выйти на линию»', def: 'Выйти на линию' },
+      { key: 'driver_go_online', label: 'Кнопка «начать принимать заказы»', def: 'Начать принимать заказы' },
       { key: 'driver_go_offline', label: 'Кнопка «уйти с линии»', def: 'Уйти с линии' },
+      { key: 'driver_offline_title', label: 'Заголовок «Вы не онлайн»', def: 'Вы не онлайн' },
+      { key: 'driver_rules_link', label: 'Ссылка «правилами для исполнителей» (чекбокс)', def: 'правилами для исполнителей' },
+      { key: 'driver_rules_modal_title', label: 'Заголовок окна правил исполнителя', def: 'Правила для исполнителя' },
       { key: 'driver_orders_title', label: 'Заголовок списка заявок', def: 'Активные заявки' },
       { key: 'driver_accept_btn', label: 'Кнопка «принять»', def: 'Принять' },
       { key: 'driver_balance_label', label: 'Подпись баланса', def: 'Баланс' },

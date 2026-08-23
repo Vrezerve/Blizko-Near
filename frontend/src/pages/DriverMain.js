@@ -450,7 +450,7 @@ const DriverMain = () => {
             <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Power className="w-10 h-10 text-slate-400" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 mb-2">Вы не на линии</h2>
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">{getText(settings, 'driver_offline_title')}</h2>
             <p className="text-slate-500">Включите режим работы для получения заказов</p>
           </div>
 
@@ -484,7 +484,7 @@ const DriverMain = () => {
             <span className="text-sm text-slate-600">
               Согласен с{' '}
               <button type="button" onClick={() => setShowRules(true)} className="text-green-600 underline">
-                правилами платформы
+                {getText(settings, 'driver_rules_link')}
               </button>
             </span>
           </label>
@@ -832,7 +832,7 @@ const DriverMain = () => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-slate-900">Правила для водителей</h3>
+              <h3 className="font-semibold text-slate-900">{getText(settings, 'driver_rules_modal_title')}</h3>
               <button onClick={() => setShowRules(false)} className="p-2">
                 <X className="w-5 h-5 text-slate-500" />
               </button>

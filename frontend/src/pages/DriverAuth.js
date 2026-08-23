@@ -369,7 +369,7 @@ const DriverAuth = () => {
                 <span className="text-sm text-slate-600">
                   Принимаю{' '}
                   <button type="button" onClick={() => setShowTerms(true)} className="text-green-600 underline">
-                    условия сервиса
+                    {getText(settings, 'agree_terms_link')}
                   </button>
                 </span>
               </label>
@@ -385,7 +385,7 @@ const DriverAuth = () => {
                 <span className="text-sm text-slate-600">
                   Даю{' '}
                   <button type="button" onClick={() => setShowPrivacy(true)} className="text-green-600 underline">
-                    согласие на обработку данных
+                    {getText(settings, 'agree_privacy_link')}
                   </button>
                 </span>
               </label>
@@ -456,7 +456,7 @@ const DriverAuth = () => {
 
             <div className="space-y-3">
               <p className="text-xs text-slate-500">
-                Условия сервиса и согласие на обработку данных приняты на предыдущем шаге.
+                Условия сервиса и согласие на обработку персональных данных приняты на предыдущем шаге.
               </p>
             </div>
 
@@ -640,14 +640,14 @@ const DriverAuth = () => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-slate-900">Условия сервиса</h3>
+              <h3 className="font-semibold text-slate-900">{getText(settings, 'modal_terms_title')}</h3>
               <button onClick={() => setShowTerms(false)} className="p-2">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               <p className="text-slate-600 whitespace-pre-line">
-                {settings?.driver_rules_text || settings?.terms_text || 'Условия использования сервиса...'}
+                {settings?.terms_text || 'Условия использования сервиса...'}
               </p>
             </div>
           </div>
@@ -659,7 +659,7 @@ const DriverAuth = () => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-slate-900">Политика конфиденциальности</h3>
+              <h3 className="font-semibold text-slate-900">{getText(settings, 'modal_privacy_title')}</h3>
               <button onClick={() => setShowPrivacy(false)} className="p-2">
                 <X className="w-5 h-5 text-slate-500" />
               </button>

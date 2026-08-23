@@ -799,7 +799,7 @@ const CustomerMain = () => {
               <span className="text-sm text-slate-600">
                 Согласен с{' '}
                 <button type="button" onClick={() => setShowRules(true)} className="text-green-600 underline">
-                  правилами платформы
+                  {getText(settings, 'customer_rules_link')}
                 </button>
               </span>
             </label>
@@ -1088,7 +1088,7 @@ const CustomerMain = () => {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-slate-900">Правила для пассажиров</h3>
+              <h3 className="font-semibold text-slate-900">{getText(settings, 'customer_rules_modal_title')}</h3>
               <button onClick={() => setShowRules(false)} className="p-2">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
